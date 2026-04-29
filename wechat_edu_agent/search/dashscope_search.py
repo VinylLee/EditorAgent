@@ -15,11 +15,10 @@ import dashscope
 from dashscope import Generation
 from dashscope.api_entities.dashscope_response import GenerationResponse
 
+from app_constants import DASHSCOPE_SEARCH_MODEL, PLACEHOLDER_URL_MARKERS
 from models.schemas import NewsItem, SearchResult
 from search.base import SearchProvider
 from llm.prompts import SEARCH_SYSTEM_PROMPT
-
-DASHSCOPE_SEARCH_MODEL = "qwen-plus"  # 支持 enable_source 的模型: qwen-plus, qwen-max, qwen3.5-plus 等
 
 
 class DashScopeSearchProvider(SearchProvider):
@@ -30,12 +29,13 @@ class DashScopeSearchProvider(SearchProvider):
     ) -> None:
         if not api_key:
             raise ValueError("DASHSCOPE_API_KEY is required for DashScope search")
-        
-        # 🔑 初始化 DashScope SDK（原生协议）
+
+        # Initialize DashScope SDK once; request-time behavior remains unchanged.
         dashscope.api_key = api_key
         self.api_key = api_key
         self.model = model or DASHSCOPE_SEARCH_MODEL
-        self.enable_url_lookup = enable_url_lookup  # 保留参数，但原生协议下通常不需要
+        # Keep URL lookup fallback for cases where provider omits URLs.
+        self.enable_url_lookup = enable_url_lookup
 
     def search(self, topic: str, news_type: str, limit: int = 5) -> SearchResult:
         user_prompt = self._build_search_prompt(topic, news_type, limit)
@@ -187,15 +187,18 @@ class DashScopeSearchProvider(SearchProvider):
             ref_index = meta.get("ref_index")  # 🔑 获取模型返回的角标索引
 
             # 🔑 优先级1: 从 search_sources 中获取URL（最可靠）
-            if (not url or url in ("无提供", "无", "暂无", "")) and ref_index and ref_index in search_sources:
+            if (not url or self._is_placeholder_url(url)) and ref_index and ref_index in search_sources:
                 src_info = search_sources[ref_index]
                 url = src_info.get("url", "")
                 if not source or source in ("未知来源", "网络来源"):
                     source = src_info.get("siteName", source)
 
             # 优先级2: 从正文中提取URL（兜底）
-            if not url or url in ("无提供", "无", "暂无", ""):
+            if not url or self._is_placeholder_url(url):
                 url = self._extract_url_from_text(body)
+
+            if self._is_placeholder_url(url):
+                url = ""
             
             # 提取域名作为来源名称
             if (not source or source in ("未知来源", "网络来源")) and url:
@@ -237,6 +240,9 @@ class DashScopeSearchProvider(SearchProvider):
                 url = first_src.get("url", "")
                 source = first_src.get("siteName", "DashScope搜索")
 
+        if self._is_placeholder_url(url):
+            url = ""
+
         return [
             NewsItem(
                 news_type=news_type,
@@ -276,7 +282,7 @@ class DashScopeSearchProvider(SearchProvider):
         for url in matches:
             url = url.rstrip(".,;:!?")
             if len(url) > 20 and not any(
-                d in url for d in ("example.com", "test.com", "localhost")
+                d in url.lower() for d in PLACEHOLDER_URL_MARKERS
             ):
                 return url
         return ""
@@ -296,8 +302,15 @@ class DashScopeSearchProvider(SearchProvider):
     @staticmethod
     def _is_real_url(url: str) -> bool:
         return bool(url) and url not in ("", "无提供", "无", "暂无", "manual://") and not any(
-            p in url for p in ("模拟", "mock", "example")
+            p in url for p in PLACEHOLDER_URL_MARKERS
         )
+
+    @staticmethod
+    def _is_placeholder_url(url: str) -> bool:
+        if not url:
+            return True
+        lowered = url.lower()
+        return any(marker in lowered for marker in PLACEHOLDER_URL_MARKERS)
 
     def _lookup_urls(self, items: List[NewsItem]) -> None:
         """Use DuckDuckGo Lite as fallback for missing URLs (rarely needed with enable_source)."""

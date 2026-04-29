@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import re
 from typing import List
 
 from agents.article_writer import ArticleWriter
@@ -13,6 +14,7 @@ from agents.polish_agent import PolishAgent
 from agents.review_agent import ReviewAgent
 from agents.title_optimizer import TitleOptimizer
 from agents.title_risk_agent import TitleRiskAgent
+from app_constants import MAX_REVIEW_ROUNDS, PLACEHOLDER_URL_MARKERS, REFERENCE_SECTION_HEADER
 from models.schemas import NewsItem, RunReport
 from search.base import SearchProvider
 from utils.file_utils import create_run_dir, write_json, write_text
@@ -124,7 +126,6 @@ class Workflow:
         reviewed_article = draft_article
         auto_rewrite_performed = False
         review_round = 0
-        max_review_rounds = 3
         review = None
 
         while True:
@@ -154,7 +155,7 @@ class Workflow:
 
             if not review.rewrite_required:
                 break
-            if review_round >= max_review_rounds:
+            if review_round >= MAX_REVIEW_ROUNDS:
                 warnings.append(
                     "Max review rounds reached; using latest draft for final output."
                 )
@@ -258,6 +259,8 @@ class Workflow:
 
     @staticmethod
     def _append_source_url(article: str, news_items: List[NewsItem]) -> str:
+        article = Workflow._strip_existing_reference_section(article)
+
         valid = [
             item for item in news_items
             if item.source and item.source.strip()
@@ -267,7 +270,7 @@ class Workflow:
             return article
 
         seen_sources: set = set()
-        ref_lines = ["", "", "---", "**参考来源：**"]
+        ref_lines = ["", "", "---", REFERENCE_SECTION_HEADER]
         for item in valid:
             source = item.source.strip()
             if source in seen_sources:
@@ -275,13 +278,26 @@ class Workflow:
             seen_sources.add(source)
             url = item.url.strip() if item.url else ""
             if url and url != "manual://" and not any(
-                placeholder in url for placeholder in ("模拟", "mock", "example")
+                placeholder in url.lower() for placeholder in PLACEHOLDER_URL_MARKERS
             ):
                 ref_lines.append(f"- [{source}]({url})")
             else:
                 ref_lines.append(f"- {source}")
 
         return article + "\n".join(ref_lines)
+
+    @staticmethod
+    def _strip_existing_reference_section(article: str) -> str:
+        """Remove any trailing reference block so the workflow can append one canonical copy."""
+        if not article:
+            return ""
+
+        pattern = re.compile(
+            r"\n{2,}---\n?\s*\*\*参考来源：\*\*.*$",
+            re.DOTALL,
+        )
+        cleaned = pattern.sub("", article).rstrip()
+        return cleaned
 
     def _build_report_markdown(self, report: RunReport) -> str:
         lines = [

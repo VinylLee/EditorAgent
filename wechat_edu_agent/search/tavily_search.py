@@ -9,10 +9,9 @@ import re
 from datetime import datetime
 from typing import List
 
+from app_constants import TAVILY_API_URL
 from models.schemas import NewsItem, SearchResult
 from search.base import SearchProvider
-
-TAVILY_API_URL = "https://api.tavily.com/search"
 
 
 class TavilySearchProvider(SearchProvider):

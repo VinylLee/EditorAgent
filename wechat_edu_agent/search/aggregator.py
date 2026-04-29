@@ -10,6 +10,7 @@ import re
 from datetime import datetime, timedelta
 from typing import List
 
+from app_constants import PLACEHOLDER_URL_MARKERS
 from models.schemas import NewsItem, SearchResult
 from search.base import SearchProvider
 
@@ -126,7 +127,7 @@ class SearchAggregator:
     @staticmethod
     def _has_real_url(url: str) -> bool:
         return bool(url) and url not in ("", "无提供", "无", "暂无", "manual://") and not any(
-            p in url for p in ("模拟", "mock", "example")
+            p in url.lower() for p in PLACEHOLDER_URL_MARKERS
         )
 
     @staticmethod

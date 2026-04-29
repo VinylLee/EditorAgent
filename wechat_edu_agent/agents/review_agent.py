@@ -3,6 +3,11 @@ from __future__ import annotations
 import json
 from typing import List, Tuple
 
+from app_constants import (
+    ARTICLE_WORD_COUNT_MAX,
+    ARTICLE_WORD_COUNT_MIN,
+    ARTICLE_WORD_COUNT_REVIEW_MAX,
+)
 from llm.json_schemas import REVIEW_SCHEMA
 from llm.prompts import REVIEW_PROMPT, REWRITE_PROMPT, SYSTEM_PROMPT
 from models.schemas import FactExtractResult, ReviewResult, TitleRiskResult
@@ -134,7 +139,7 @@ class ReviewAgent:
         problems: List[str] = ["Review JSON parse failed"]
         rewrite_required = False
 
-        if word_count < 1200 or word_count > 1800:
+        if word_count < ARTICLE_WORD_COUNT_MIN or word_count > ARTICLE_WORD_COUNT_MAX:
             rewrite_required = True
             problems.append("字数不在 1200-1800 范围内")
 
@@ -163,7 +168,7 @@ class ReviewAgent:
         title_risk: TitleRiskResult,
     ) -> ReviewResult:
         word_count = count_cjk_chars(article_markdown)
-        if word_count < 1200 or word_count > 1900:
+        if word_count < ARTICLE_WORD_COUNT_MIN or word_count > ARTICLE_WORD_COUNT_REVIEW_MAX:
             review.rewrite_required = True
             review.problems.append("字数不在 1200-1900 范围内")
 

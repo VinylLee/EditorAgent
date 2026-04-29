@@ -4,6 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from app_constants import DEFAULT_NEWS_TYPE, DEFAULT_TOPIC, VALID_SEARCH_PROVIDERS
 from agents.workflow import Workflow
 from config import AppConfig, load_config
 from llm.client import LLMClient
@@ -13,8 +14,6 @@ from search.dashscope_search import DashScopeSearchProvider
 from search.manual_input import ManualNewsProvider
 from search.tavily_search import TavilySearchProvider
 from utils.logger import get_logger
-
-VALID_SEARCH_PROVIDERS = ("manual", "dashscope", "tavily", "auto")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,10 +31,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Search provider: dashscope, tavily, auto, manual. Default from SEARCH_PROVIDER env.",
     )
     run_parser.add_argument(
-        "--topic", default="教育内卷", help="Topic keyword for search and output folder"
+        "--topic", default=DEFAULT_TOPIC, help="Topic keyword for search and output folder"
     )
     run_parser.add_argument(
-        "--news-type", default="社会事件", help="新闻类型: 教育部政策/学校案例/社会事件"
+        "--news-type", default=DEFAULT_NEWS_TYPE, help="新闻类型: 教育部政策/学校案例/社会事件"
     )
 
     return parser
