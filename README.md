@@ -1,600 +1,312 @@
-你是一名资深 Python 全栈工程师和 AI Agent 架构师。请帮我生成一个完整的自动化内容生产 Agent 项目，项目目标是：为微信公众号“教育最前沿”自动完成教育新闻选题、新闻抓取、事实整理、观点生成、公众号文章撰写、标题优化、封面图提示词生成和 Markdown 排版。
+# wechat_edu_agent — 教育最前沿 · AI 公众号内容生产系统
+
+自动化的微信公众号内容生产 Agent，专为教育类公众号 **「教育最前沿」** 设计。
+
+支持**联网搜索**（DashScope / Tavily）和**手动输入**两种方式获取新闻素材，通过 LLM 流水线自动完成选题判断、事实提取、文章撰写、标题优化、风险审查、质量审核与封面图提示词生成。
+
+## 项目结构
+
+```
+main.py                    # CLI 入口，参数解析，Provider 工厂
+config.py                  # .env → AppConfig 配置加载
+agents/
+  workflow.py              # 流水线编排器（核心）
+  news_selector.py         # LLM 选题评分
+  fact_extract_agent.py    # 事实提取
+  article_writer.py        # 文章撰写
+  title_optimizer.py       # 标题生成与选择
+  title_risk_agent.py      # 标题风控
+  review_agent.py          # 质量审核与重写
+  polish_agent.py          # 最终润色
+  cover_prompt_generator.py# 封面图提示词
+  formatter.py             # Markdown 格式化
+llm/
+  client.py                # OpenAI 兼容客户端（支持 JSON 模式与 LLM 追踪）
+  prompts.py               # 全部系统提示词
+  json_schemas.py          # JSON schema 定义
+models/
+  schemas.py               # Pydantic 数据模型
+search/
+  base.py                  # SearchProvider 抽象基类
+  manual_input.py          # 手动新闻输入
+  dashscope_search.py      # DashScope 联网搜索（通义千问 enable_search）
+  tavily_search.py         # Tavily Search API 搜索
+  aggregator.py            # 多源聚合、去重、降级
+utils/
+  json_utils.py            # JSON 容错解析与修复
+  text_utils.py            # 中文字数统计、slugify
+  file_utils.py            # 输出目录与文件写入
+  logger.py                # 日志记录器
+outputs/                   # 运行输出（按时间戳分目录）
+```
+
+## 环境要求
+
+- **Python 3.11+**
+- **LLM API**：任意 OpenAI-compatible 接口（已测试：DeepSeek、DashScope）
+- **搜索 API（可选）**：DashScope API Key（联网搜索）/ Tavily API Key（搜索 API）
+- 依赖包：`openai`、`python-dotenv`、`pydantic`（Tavily 需额外安装 `requests`）
+
+## 快速开始
+
+### 1. 创建环境
+
+```bash
+conda create -n agent311 python=3.11
+conda activate agent311
+pip install openai python-dotenv pydantic
+```
+
+### 2. 配置 .env
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env`，最少需要配置 LLM：
+
+```ini
+# 必填：LLM API
+LLM_BASE_URL=https://api.deepseek.com
+LLM_API_KEY=sk-your_key_here
+LLM_MODEL=deepseek-chat
+
+# 可选：搜索（不配则只能手动输入新闻）
+SEARCH_PROVIDER=auto
+DASHSCOPE_API_KEY=sk-your_dashscope_key
+# TAVILY_API_KEY=tvly-your_tavily_key
+
+# 可选
+OUTPUT_DIR=outputs
+LLM_TEMPERATURE=0.7
+```
+
+### 3. 运行
+
+```bash
+# 联网搜索模式（需配好搜索 API Key）
+python main.py run --search-provider auto --topic "教育内卷"
+
+# 手动输入模式（无需搜索 API）
+python main.py run --manual-news ./news/sample_news.txt
+```
+
+## CLI 参数详解
+
+```
+python main.py run [OPTIONS]
+```
+
+| 参数 | 必填 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--manual-news` | 否 | — | 手动新闻文件路径，传入后忽略 `--search-provider` |
+| `--search-provider` | 否 | `.env` 中的 `SEARCH_PROVIDER` | `manual` / `dashscope` / `tavily` / `auto` |
+| `--topic` | 否 | `教育内卷` | 搜索关键词，同时用作输出目录名 |
+| `--news-type` | 否 | `社会事件` | `教育部政策` / `学校案例` / `社会事件` |
 
-一、项目背景
+**默认行为**：如果不传任何参数，程序使用 `.env` 中 `SEARCH_PROVIDER=manual`，报错提示你提供 `--manual-news` 文件。要启用联网搜索，将 `SEARCH_PROVIDER` 设为 `auto` / `dashscope` / `tavily` 并配好对应 API Key。
 
-公众号名称：教育最前沿
+## 运行示例
 
-公众号定位：
-拆解“减负”与“内卷”背后的残酷规则。
-拒绝空话，只提供理性、可执行的升学决策。
-在这里，看懂教育竞争的真实牌局。
-别让你的信息差，成为孩子人生的天花板。
-
-核心主题：
-高考竞争 + 教育内卷，尤其关注“减负 vs 内卷”的冲突。
-
-目标读者：
-一线城市中产家长，孩子年龄 6-18 岁。
-文章要能触发家长焦虑、共鸣和思考，但不要制造无意义恐慌。
-
-内容风格：
-1. 理性但有冲击力。
-2. 不空话。
-3. 有明确观点。
-4. 能给家长提供实际、可执行的教育决策建议。
-5. 不要鸡汤，不要泛泛而谈。
-6. 文章适合微信公众号发布。
-
-文章字数：
-1200-1800 中文字。
-
-二、核心工作流
-
-请实现如下自动化流程：
-
-新闻抓取与选题判断 → 新闻事实整理 → 观点生成 → 文章写作 → 标题生成 → 标题选择与优化 → 公众号排版 → 封面图提示词生成 → 输出最终文件
-
-具体流程如下：
-
-1. 新闻抓取与选题判断
-
-Agent 需要从以下三类新闻中随机选择一个类型进行新闻检索：
-
-A. 教育部政策
-B. 学校案例
-C. 社会事件，例如家长冲突、补课、升学焦虑、校园管理事件等
-
-筛选新闻的标准：
-1. 新闻必须与教育、升学、高考竞争、减负、内卷、家庭教育、学生压力、补课、学校管理等主题相关。
-2. 新闻必须能够产生家长情绪共鸣，引发家长焦虑或思考。
-3. 新闻必须和高考竞争、教育内卷、减负政策或升学路径有关。
-4. 优先选择最近 7 天内的中文新闻。
-5. 优先选择权威来源，例如教育部、地方教育局、新华社、人民网、中国教育在线、澎湃新闻、央视新闻、地方官方媒体等。
-6. 如果搜不到最近 7 天合适新闻，可以放宽到最近 30 天，但必须在输出中说明。
-
-新闻检索接口设计：
-请将新闻检索做成可替换模块，支持以下 provider：
-1. DashScope / 通义千问联网搜索，调用时支持 enable_search=True。
-2. Gemini Grounding with Google Search，可选。
-3. 自定义搜索 API，例如 Search1API、Tavily、SerpAPI 或其他搜索接口。
-4. 如果没有配置联网 API，则允许用户手动输入新闻素材。
-
-请不要把搜索逻辑写死在主流程中，要设计成 SearchProvider 抽象类或统一接口。
-
-新闻抓取结果需要包含：
-- news_type：新闻类型，三选一
-- title：新闻标题
-- source：新闻来源
-- published_at：发布时间
-- url：新闻链接
-- summary：100-300 字摘要
-- core_facts：核心事实列表
-- parent_emotion_points：家长焦虑点列表
-- relevance_score：与公众号定位的相关度，0-100
-- virality_score：适合公众号传播的潜力，0-100
-- reason：为什么选择这条新闻
-
-2. 选题判断
-
-请让 Agent 对候选新闻做评分，评分维度包括：
-- 与高考竞争/内卷相关度
-- 是否能引发家长共鸣
-- 是否有冲突感
-- 是否能引出深层教育逻辑
-- 是否能给出可执行建议
-- 是否适合写成公众号文章
-
-最后选出一条新闻作为本期文章主题。
-
-3. 观点生成与文章写作
-
-文章必须严格采用以下结构：
-
-标题：
-由后续标题模块生成，文章模块先可使用临时标题。
-
-正文结构：
-
-第一部分：新闻事件，约 100 字
-要求：
-简洁交代新闻发生了什么。
-包括新闻来源、时间、地点、核心事实。
-不要加入过多评论。
-
-第二部分：引出一个反常识问题
-要求：
-不要只是说“家长很焦虑”。
-要提出一个有冲击力的问题。
-例如：
-“为什么学校减负了，家长反而更焦虑？”
-“为什么孩子少上了晚自习，家长却不敢松一口气？”
-“为什么越强调公平，家长越害怕掉队？”
-
-第三部分：表面现象
-要求：
-解释大众看到的表层现象。
-例如：
-学校规范办学、减少补课、延迟上学、控制作业、取消周末补课等。
-但不要停留在政策宣传层面。
-
-第四部分：深层逻辑
-要求：
-从教育学、社会学、升学竞争、资源分配、家庭策略等角度分析。
-必须解释为什么会这样。
-要体现“减负”和“内卷”的矛盾：
-学校端减负，不等于竞争端减压；
-校内时间减少，可能导致校外资源竞争加剧；
-真正拉开差距的可能不是学习时长，而是信息、资源、规划、家庭执行力。
-
-第五部分：家长真正焦虑点
-要求：
-要写出一线城市中产家长的真实心理。
-例如：
-怕孩子被别人偷偷甩开；
-怕自己判断错方向；
-怕政策变化让原来的规划失效；
-怕孩子表面轻松，实际竞争力下降；
-怕自己没有资源、信息和方法。
-
-第六部分：具体建议，必须给 3 条
-要求：
-建议必须通俗易懂，可执行。
-不能只说“尊重孩子”“减少焦虑”“培养兴趣”。
-要给实际做法。
-每条建议包括：
-- 建议标题
-- 为什么重要
-- 家长具体怎么做
-- 避免什么误区
-
-建议方向可以包括：
-1. 不要只盯着学校是否补课，而要看孩子的真实学习效率。
-2. 建立家庭学习评估表，定期判断孩子的短板。
-3. 把补课从“跟风报班”改成“精准补短板”。
-4. 提前理解中高考政策、选科、升学路径。
-5. 关注孩子的睡眠、运动、情绪稳定性，因为这会影响长期竞争力。
-6. 用信息差、规划能力和执行力替代无效内卷。
-
-第七部分：结尾
-要求：
-有力量，有余味。
-不要鸡汤。
-不要煽情过度。
-要让家长觉得“这篇文章说出了我不敢说的焦虑，也给了我下一步该做什么”。
-
-4. 标题生成
-
-请为文章生成 10 个公众号标题。
-
-标题要求：
-1. 强情绪，能体现焦虑、冲突或紧迫感。
-2. 反常识。
-3. 面向家长。
-4. 能提高公众号点击率。
-5. 不要低俗标题党。
-6. 标题要围绕教育竞争、减负、内卷、家长焦虑、升学决策。
-
-标题示例风格：
-- 减负3年，为什么孩子更累了？
-- 真正拉开差距的，从来不是成绩
-- 学校不补课了，最慌的为什么是家长？
-- 孩子少学半小时，家长却开始失眠了
-
-标题输出格式：
-- title
-- score，0-100
-- reason
-- risk，说明是否存在夸张、误导或过度焦虑的问题
-
-5. 标题选择与优化
-
-从 10 个标题中选出 1 个最适合发布的标题，并进行优化。
-
-选择标准：
-1. 吸引读者。
-2. 有冲突感。
-3. 面向家长。
-4. 不造谣、不夸大事实。
-5. 与文章内容高度匹配。
-6. 适合微信公众号推荐流量。
-
-输出：
-- final_title
-- why_selected
-- optimized_reason
-
-6. 微信公众号排版
-
-请生成适合微信公众号发布的 Markdown 文章。
-
-排版规则：
-1. 每 2-4 行分段。
-2. 小标题清晰。
-3. 重点句可以加粗。
-4. 不要使用过多 emoji。
-5. 不要使用复杂表格。
-6. 适合手机阅读。
-7. 输出 Markdown 文件。
-8. 文章开头要抓人。
-9. 文章结尾要有传播感。
-
-7. 封面图提示词生成
-
-根据最终标题和文章内容，生成公众号封面图提示词。
-
-封面图要求：
-1. 目标是吸引家长点击。
-2. 风格要适合教育类公众号。
-3. 可以体现家长焦虑、孩子学习、竞争、分岔路、升学压力、教室、试卷、城市中产家庭等元素。
-4. 不要生成真实人物肖像。
-5. 不要使用侵犯版权的风格描述。
-6. 输出中文提示词和英文提示词各一版。
-
-输出格式：
-- cover_prompt_cn
-- cover_prompt_en
-- negative_prompt
-- suggested_layout
-- cover_text，建议放在封面图上的短文案，控制在 12 个中文字以内
-
-8. 最终输出
-
-每次运行 Agent 后，请在 outputs 目录下生成一个独立文件夹，文件夹名称格式：
-YYYYMMDD_HHMM_文章主题关键词
-
-文件夹内包括：
-
-1. news.json
-保存选中的新闻和候选新闻。
-
-2. article.md
-保存最终公众号文章。
-
-3. titles.json
-保存 10 个标题和最终标题。
-
-4. cover_prompt.md
-保存封面图提示词。
-
-5. report.md
-保存本次运行报告，包括：
-- 使用了哪个搜索 provider
-- 使用了哪个写作模型
-- 搜到了多少条新闻
-- 为什么选中当前新闻
-- 文章字数
-- 最终标题
-- 是否存在事实不确定点
-- 建议人工复核的地方
-
-三、模型调用设计
-
-请把模型调用做成可配置。
-
-支持至少两类模型：
-
-1. 本地 LM Studio
-兼容 OpenAI API。
-默认 base_url:
-http://localhost:1234/v1
-
-2. 国内或商业大模型 API
-兼容 OpenAI API。
-例如：
-- DashScope / 通义千问
-- DeepSeek
-- Kimi / Moonshot
-- 智谱 GLM
-- 腾讯混元
-
-请设计统一的 LLMClient，不要让业务逻辑直接依赖某一个模型。
-
-.env 示例：
-
-LMSTUDIO_BASE_URL=http://localhost:1234/v1
-LMSTUDIO_API_KEY=lm-studio
-LMSTUDIO_MODEL=qwen3.5-9b
-
-DASHSCOPE_API_KEY=
-DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-DASHSCOPE_MODEL=qwen-plus
-
-DEEPSEEK_API_KEY=
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-chat
-
-MOONSHOT_API_KEY=
-MOONSHOT_BASE_URL=https://api.moonshot.ai/v1
-MOONSHOT_MODEL=kimi-k2
-
-ZHIPU_API_KEY=
-ZHIPU_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-ZHIPU_MODEL=glm-4.5
-
-DEFAULT_SEARCH_PROVIDER=dashscope
-DEFAULT_DRAFT_PROVIDER=deepseek
-DEFAULT_POLISH_PROVIDER=deepseek
-
-模型分工建议：
-1. 新闻检索：优先 DashScope / 通义千问联网搜索。
-2. 文章生成：优先 DeepSeek。
-3. 备用：GLM 或 Kimi。
-4. 本地备用：LM Studio 中的 Qwen3.5-9B 或 Qwen3-14B。
-
-四、程序结构
-
-请生成一个清晰的 Python 项目，建议结构如下：
-
-wechat_edu_agent/
-  README.md
-  requirements.txt
-  .env.example
-  main.py
-  config.py
-
-  agents/
-    __init__.py
-    workflow.py
-    news_selector.py
-    article_writer.py
-    title_optimizer.py
-    formatter.py
-    cover_prompt_generator.py
-
-  llm/
-    __init__.py
-    client.py
-    prompts.py
-
-  search/
-    __init__.py
-    base.py
-    dashscope_search.py
-    gemini_search.py
-    custom_search.py
-    manual_input.py
-
-  models/
-    __init__.py
-    schemas.py
-
-  utils/
-    __init__.py
-    json_utils.py
-    text_utils.py
-    file_utils.py
-    logger.py
-
-  outputs/
-    .gitkeep
-
-五、技术要求
-
-1. 使用 Python 3.11+。
-2. 使用 pydantic 定义数据结构。
-3. 使用 python-dotenv 读取环境变量。
-4. 使用 openai SDK 调用 OpenAI-compatible API。
-5. 所有 API key 必须从 .env 读取，不要写死。
-6. 所有中间结果都要保存，方便人工检查。
-7. 代码要有清晰注释。
-8. 要有异常处理。
-9. 搜索失败时允许退回 manual_input 模式，让用户手动粘贴新闻。
-10. LLM 输出 JSON 时要做容错解析。
-11. 最终文章必须保存为 Markdown。
-12. README 中要写清楚安装、配置和运行方法。
-
-六、命令行使用方式
-
-请实现 CLI。
-
-示例：
-
-python main.py run
-
-可选参数：
-
-python main.py run --topic "减负 内卷 高考竞争"
-python main.py run --news-type "学校案例"
-python main.py run --search-provider dashscope
-python main.py run --draft-provider deepseek
-python main.py run --manual-news ./sample_news.txt
-
-如果用户指定 --manual-news，则跳过联网搜索，直接基于用户提供的新闻写文章。
-
-七、核心 Prompt 模板
-
-请在 llm/prompts.py 中保存以下 Prompt 模板，并在代码中调用。
-
-1. 新闻选择 Prompt
-
-你是一名教育内容编辑，需要为微信公众号“教育最前沿”选择一则新闻。
-
-公众号定位：
-拆解“减负”与“内卷”背后的残酷规则。
-拒绝空话，只提供理性、可执行的升学决策。
-在这里，看懂教育竞争的真实牌局。
-别让家长的信息差，成为孩子人生的天花板。
-
-目标读者：
-一线城市中产家长，孩子年龄 6-18 岁。
-
-请从候选新闻中选择最适合写成公众号文章的一条。
-
-选择标准：
-1. 新闻类型必须属于：教育部政策、学校案例、社会事件。
-2. 新闻要能引发家长情绪共鸣。
-3. 新闻必须与高考竞争、教育内卷、减负政策、升学焦虑有关。
-4. 新闻要能引出深层逻辑，而不是只能写表面现象。
-5. 新闻要能给家长提供实际建议。
-6. 不要选择事实不清、来源不明、过度娱乐化的新闻。
-
-请输出 JSON：
-{
-  "selected_news": {},
-  "reason": "",
-  "parent_emotion_points": [],
-  "deep_logic_angles": [],
-  "suggested_article_angle": "",
-  "risk_notes": []
-}
-
-2. 文章写作 Prompt
-
-你是一个教育类微信公众号作者，擅长根据热点新闻创作有传播力的深度教育文章。
-
-公众号主题：
-高考竞争 + 教育内卷，尤其关注“减负 vs 内卷”。
-
-目标读者：
-一线城市中产家长，孩子年龄 6-18 岁。
-
-请基于以下新闻写一篇公众号文章。
-
-文章结构：
-1. 新闻事件，约 100 字。
-2. 引出一个反常识问题。
-3. 表面现象。
-4. 深层逻辑，从教育学、社会学、升学竞争、家庭资源和教育决策角度分析。
-5. 家长真正焦虑点，引发情感共鸣。
-6. 给家长的 3 条具体建议，每条都要通俗、可执行。
-7. 有力量的结尾，不要鸡汤。
-
-风格要求：
-- 理性但有冲击力。
-- 不空话。
-- 有观点。
-- 不制造无意义恐慌。
-- 不要像政策宣传稿。
-- 不要像 AI 套话。
-- 字数 1200-1800 中文字。
-- 适合微信公众号发布。
-- 多用短段落。
-- 重点句可以加粗。
-
-请输出 Markdown 正文。
-
-3. 标题生成 Prompt
-
-你是教育类微信公众号标题专家。
-请为以下文章生成 10 个标题。
-
-标题要求：
-1. 强情绪，体现焦虑、冲突或紧迫感。
-2. 反常识。
-3. 面向家长。
-4. 吸引读者点击。
-5. 不低俗，不造谣，不恶意夸大。
-6. 适合微信公众号推荐流量。
-
-请输出 JSON 数组，每个标题包含：
-{
-  "title": "",
-  "score": 0,
-  "reason": "",
-  "risk": ""
-}
-
-4. 标题选择 Prompt
-
-你是教育类微信公众号主编。
-请从以下 10 个标题中选择最适合发布的一个，并进一步优化。
-
-选择标准：
-1. 点击吸引力强。
-2. 有冲突感。
-3. 面向家长。
-4. 不夸大事实。
-5. 与文章内容高度匹配。
-6. 适合公众号传播。
-
-请输出 JSON：
-{
-  "final_title": "",
-  "why_selected": "",
-  "optimized_reason": ""
-}
-
-5. 封面图 Prompt 生成 Prompt
-
-你是公众号封面策划。
-请根据文章标题和内容，生成一套封面图提示词。
-
-要求：
-1. 面向一线城市中产家长。
-2. 体现教育竞争、减负、内卷、孩子学习压力或家长焦虑。
-3. 画面有冲突感，但不要恐怖、低俗或夸张。
-4. 不要出现真实名人、真实学校 logo、真实机构 logo。
-5. 不要使用侵权风格词。
-6. 适合微信公众号封面。
-
-请输出 JSON：
-{
-  "cover_prompt_cn": "",
-  "cover_prompt_en": "",
-  "negative_prompt": "",
-  "suggested_layout": "",
-  "cover_text": ""
-}
-
-八、数据结构
-
-请使用 pydantic 定义以下模型：
-
-NewsItem
-- news_type
-- title
-- source
-- published_at
-- url
-- summary
-- core_facts
-- parent_emotion_points
-- relevance_score
-- virality_score
-- reason
-
-ArticleResult
-- final_title
-- article_markdown
-- word_count
-- news
-- titles
-- cover_prompt
-- risk_notes
-
-RunReport
-- run_id
-- created_at
-- search_provider
-- draft_provider
-- polish_provider
-- selected_news_title
-- final_title
-- article_word_count
-- output_dir
-- warnings
-
-九、质量控制
-
-在最终输出前，请增加一个 review 步骤，检查：
-
-1. 文章是否围绕新闻事实展开。
-2. 是否存在编造新闻事实。
-3. 是否符合 1200-1800 字。
-4. 是否有 3 条具体建议。
-5. 是否体现“减负 vs 内卷”的冲突。
-6. 是否面向一线城市中产家长。
-7. 标题是否夸张过度。
-8. 是否需要人工复核事实。
-
-如果发现问题，自动修正一次。
-
-十、请先输出完整项目代码
-
-请按照上述需求，生成完整项目代码。
-要求：
-1. 不要只给伪代码。
-2. 每个文件都要给出完整内容。
-3. README 要包含安装、配置、运行示例。
-4. 如果某些搜索 API 的真实 SDK 不确定，请先写成可替换接口，并提供 TODO 标记。
-5. 代码要能在没有联网搜索 API 的情况下，通过 --manual-news 跑通完整流程。
+### 联网搜索
+
+```bash
+# DashScope 联网搜索（通义千问自动搜索网页并整合新闻）
+python main.py run --search-provider dashscope --topic "高考改革"
+
+# Tavily 搜索 API
+python main.py run --search-provider tavily --topic "减负政策"
+
+# 自动模式（DashScope + Tavily 串联，任一成功即可）
+python main.py run --search-provider auto --topic "教育内卷"
+
+# 指定新闻类型偏好
+python main.py run --search-provider auto --topic "教育内卷" --news-type "学校案例"
+```
+
+### 手动输入
+
+```bash
+# 最简单用法
+python main.py run --manual-news ./news/sample_news.txt
+
+# 指定主题和类型
+python main.py run --manual-news ./news/sample_news.txt \
+    --topic "减负 内卷" \
+    --news-type "社会事件"
+```
+
+### 降级策略
+
+```
+--manual-news 传入？
+  ├─ 是 → 使用 ManualNewsProvider（本地文件）
+  └─ 否 → 检查 --search-provider：
+           ├─ dashscope → DashScope 联网搜索
+           ├─ tavily    → Tavily Search API
+           ├─ auto      → DashScope → Tavily 依次尝试
+           └─ manual    → 报错：请提供 --manual-news 或切换 Provider
+```
+
+## 工作流详解（11 步）
+
+整个流水线由 [agents/workflow.py](agents/workflow.py) 中的 `Workflow.run()` 编排。每一步的输出都是下一步的输入。
+
+### 步骤 1：搜索 — 获取新闻素材
+
+```
+provider.search(topic, news_type, limit=5) → SearchResult
+```
+
+根据 `--search-provider` 调用对应的 Provider：
+
+| Provider | 数据来源 | 返回内容 |
+|----------|---------|---------|
+| ManualNewsProvider | 本地 .txt 文件 | 文件全文 → 1 个 NewsItem |
+| DashScopeSearchProvider | 通义千问联网搜索 | LLM 整合的新闻 → 1~5 个 NewsItem |
+| TavilySearchProvider | Tavily Search API | 结构化搜索结果 → 若干 NewsItem |
+| SearchAggregator | 多 Provider 串联 | 去重合并后的结果 |
+
+返回 `SearchResult`，包含 `items`（NewsItem 列表）和 `raw_text`（新闻全文）。
+结果保存到 `search_result.json`。
+
+### 步骤 2：选题判断 — 选择最佳新闻
+
+```
+NewsSelector.select(search_result.items) → NewsSelectionResult
+```
+
+LLM 从候选新闻中选择最适合写成公众号文章的一条，同时生成：
+
+- `selected_news`：选中的 NewsItem
+- `suggested_article_angle`：文章切入角度（如"减负背后的资源不平等"）
+- `parent_emotion_points`：家长情绪触点（如"焦虑""失控感"）
+- `deep_logic_angles`：深层逻辑角度
+
+### 步骤 3：事实提取 — 拆解可验证信息
+
+```
+FactExtractAgent.extract(search_result.raw_text) → FactExtractResult
+```
+
+LLM 从 `raw_text` 中抽取：
+
+- `verified_facts`：可验证的具体事实（含 evidence 原文出处）
+- `verified_numbers`：数字类信息（时间、比例、人数等）
+- `verified_quotes`：直接引语（含说话人）
+- `allowed_inferences`：基于事实的合理推断
+- `forbidden_claims`：禁止后续写作中编造的内容
+
+**这份结果是后续写作和审核的唯一事实来源。**值得注意的是，LLM编写文章并非只基于选中的NewsItem，而是从其出发，涉及所有NewsItem
+
+### 步骤 4：文章撰写 — 生成草稿
+
+```
+ArticleWriter.write(selected, raw_text, fact_extract, article_angle) → 文章 Markdown
+```
+
+LLM 基于以下输入撰写 1200-1800 字文章：
+
+| 输入 | 作用 |
+|------|------|
+| `selected` (NewsItem JSON) | 选题聚焦——写哪条新闻 |
+| `fact_extract` (FactExtractResult JSON) | 事实边界——只能用这些事实 |
+| `article_angle` | 叙事角度——从什么视角切入 |
+| `raw_text` | 背景素材——补充上下文 |
+
+文章结构：新闻事件（约 100 字，含来源和日期）→ 反常识问题 → 表面现象 → 深层逻辑（教育学/社会学/升学竞争/家庭资源）→ 家长焦虑点 → 3 条具体建议 → 有力结尾。
+
+### 步骤 5：标题生成 — 生成 10 个候选
+
+```
+TitleOptimizer.generate_titles(article) → List[TitleCandidate]
+```
+
+LLM 生成 10 个标题，每个标题附带 score（0-100）、reason 和 risk 评估。
+要求：强情绪、反常识、面向家长、不低俗不造谣。
+
+### 步骤 6：标题风控 — 安全分类
+
+```
+TitleRiskAgent.assess(titles, article, fact_extract) → TitleRiskResult
+```
+
+LLM 对标题进行风险评估，分为：
+- `safe_titles`：未命中高风险规则的标题
+- `risky_titles`：命中高风险规则的标题（含 risk_level 和 suggested_fix）
+- `recommended_title`：从 safe 中推荐的最佳标题
+
+高风险规则：含未证实数字、绝对化结论、推断写成事实、制造恐慌、编造场景。
+
+### 步骤 7：标题选择 — 确定最终标题
+
+```
+TitleOptimizer.select_title(safe_titles, article) → TitleSelection
+```
+
+LLM 从安全标题中选出最适合发布的一个，给出选择理由和优化说明。
+
+### 步骤 8：审核 ↔ 重写循环（最多 3 轮）
+
+```
+while review_round <= 3:
+    ReviewAgent.review(article, fact_extract, title_risk, raw_text) → ReviewResult
+    if not rewrite_required: break
+    ReviewAgent.rewrite(article, review, fact_extract, raw_text) → 修正后文章
+```
+
+每轮审核检查：
+- 是否存在事实编造（hallucination_risks）
+- 是否有无法验证的事实断言（unsupported_claims）
+- 标题风险、字数是否合格、结构是否完整
+- 是否像空话/鸡汤/政策宣传腔
+
+审核规则：
+- 存在 hallucination_risks → `passed=False`（硬失败）
+- 分数 <70 → 硬失败
+- 分数 70-84 → `rewrite_required=True`（软重写）
+- 分数 ≥85 → 通过
+
+### 步骤 9：最终润色 — 去标记、优化节奏
+
+```
+PolishAgent.polish(title, article, fact_extract) → 润色后文章
+```
+
+- 去除残存格式标记和提示词痕迹
+- 优化语句节奏，适配手机阅读
+- 不新增任何事实、数字、人物、引语
+
+### 步骤 10：封面提示词 — 生成封面图 prompt
+
+```
+CoverPromptGenerator.generate(title, article) → CoverPrompt
+```
+
+生成中英文封面图提示词，含负向提示词和布局建议。
+
+### 步骤 11：输出 — 写入文件
+
+文章末尾自动附加新闻来源 URL（如有）。所有输出写入 `outputs/YYYYMMDD_HHMM_<topic>/`：
+
+| 文件 | 内容 |
+|------|------|
+| `search_result.json` | 搜索到的原始新闻（NewsItem 列表 + 全文） |
+| `article.md` | 审核前的原始草稿 |
+| `final_article.md` | 润色后的最终文章（含来源 URL） |
+| `fact_extract.json` | 事实提取结果（验证事实/数字/引语/推断） |
+| `titles.json` | 10 个候选标题 + 最终选择 |
+| `title_risk.json` | 标题风险评估（安全/风险分类） |
+| `review.json` | 质量审核报告（评分/幻觉风险/问题列表） |
+| `cover_prompt.md` | 封面图提示词（中英文） |
+| `report.md` | 运行报告（含评分、字数、标题风险数等） |
+| `llm_trace.jsonl` | 所有 LLM 调用追踪（含 prompt/response/timestamp） |
+
+## 关键设计决策
+
+- **搜索可插拔**：`SearchProvider` ABC，已实现 DashScope / Tavily / Manual 三种 Provider，支持 auto 多源聚合
+- **事实锚定**：事实提取结果是写作和审核的单一事实来源（Single Source of Truth），Review 区分"事实断言"与"观点分析"，防止误报
+- **审核分级**：<70 硬失败 → 70-84 软重写 → ≥85 通过；仅 hallucination_risks（具体事实编造）触发硬失败，unsupported_claims 降级为软警告
+- **来源追溯**：文章开头注明新闻来源和日期，末尾附加原文链接，确保可溯源
+- **JSON 容错**：每轮 LLM JSON 输出均有多层回退：解析 → 修复 → 默认值
+- **LLM 追踪**：所有调用记录到 `llm_trace.jsonl`，包含完整 prompt/response/timestamp，便于调试和成本分析
