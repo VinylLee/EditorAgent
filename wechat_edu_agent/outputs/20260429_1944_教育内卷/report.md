@@ -1,0 +1,20 @@
+# Run Report
+
+- run_id: 20260429_194634
+- created_at: 2026-04-29T19:46:34
+- search_provider: dashscope
+- draft_provider: deepseek-chat
+- polish_provider: deepseek-chat
+- selected_news_title: 中国教育领域“内卷”的现象正迎来变化
+- final_title: 少子化时代，高考反而更难？家长别被“人口红利”骗了
+- article_word_count: 1262
+- output_dir: outputs\20260429_1944_教育内卷
+- fact_count: 5
+- number_count: 3
+- quote_count: 4
+- review_score: 85
+- review_passed: True
+- final_review_passed: True
+- title_risk_count: 3
+- auto_rewrite_performed: False
+- human_check_required: False

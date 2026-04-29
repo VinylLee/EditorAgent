@@ -1,0 +1,13 @@
+{
+  "passed": false,
+  "score": 40,
+  "rewrite_required": false,
+  "problems": [
+    "Review JSON parse failed"
+  ],
+  "hallucination_risks": [],
+  "unsupported_claims": [],
+  "title_risks": [],
+  "rewrite_instructions": "请按事实抽取结果修正文章，并保证字数在 1200-1800。",
+  "human_check_required": true
+}

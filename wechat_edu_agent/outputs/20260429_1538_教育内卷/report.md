@@ -1,0 +1,24 @@
+# Run Report
+
+- run_id: 20260429_154137
+- created_at: 2026-04-29T15:41:37
+- search_provider: manual
+- draft_provider: deepseek-chat
+- polish_provider: deepseek-chat
+- selected_news_title: 新闻标题：松原多所高中推行“规范办学”：早晨推迟半小时、高三不补课，家长却陷入另一重忧虑
+- final_title: 学校推迟上课，家长却偷偷找私教：减负为何成了‘焦虑放大器’？
+- article_word_count: 1706
+- output_dir: outputs\20260429_1538_教育内卷
+- fact_count: 5
+- number_count: 6
+- quote_count: 4
+- review_score: 72
+- review_passed: False
+- final_review_passed: False
+- title_risk_count: 0
+- auto_rewrite_performed: True
+- human_check_required: True
+- unsupported_claim: 正文中‘很多家长看到这样的新闻，第一反应可能不是羡慕，而是紧张’缺乏新闻中家长反馈的直接证据
+- unsupported_claim: 正文中‘你怕的不是孩子轻松，你怕的是别人家的孩子在轻松的外表下，偷偷地卷’为作者主观推断，无事实支持
+- unsupported_claim: 正文中‘真正能让孩子走远的，不是比别人多刷了多少题’等建议性表述缺乏事实支撑
+- warning: Max review rounds reached; using latest draft for final output.

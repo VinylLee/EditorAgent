@@ -1,0 +1,12 @@
+{
+  "verified_facts": [],
+  "verified_numbers": [],
+  "verified_quotes": [],
+  "allowed_inferences": [],
+  "forbidden_claims": [
+    "事实抽取失败，禁止新增具体事实或数字"
+  ],
+  "uncertain_points": [
+    "事实抽取失败，需人工核对"
+  ]
+}

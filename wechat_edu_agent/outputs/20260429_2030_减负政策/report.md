@@ -1,0 +1,20 @@
+# Run Report
+
+- run_id: 20260429_203239
+- created_at: 2026-04-29T20:32:39
+- search_provider: auto
+- draft_provider: deepseek-chat
+- polish_provider: deepseek-chat
+- selected_news_title: 关于执行广东省规范社会事务进校园为中小学教师减负2026年省级白名单的公告
+- final_title: 当老师不再被“拍照打卡”绑架，你家孩子的竞争力谁来管？
+- article_word_count: 1718
+- output_dir: outputs\20260429_2030_减负政策
+- fact_count: 10
+- number_count: 2
+- quote_count: 1
+- review_score: 92
+- review_passed: True
+- final_review_passed: True
+- title_risk_count: 1
+- auto_rewrite_performed: False
+- human_check_required: False
