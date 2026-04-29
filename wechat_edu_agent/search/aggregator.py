@@ -84,12 +84,13 @@ class SearchAggregator:
             url_key = self._normalize_url(item.url)
             title_key = self._normalize_title(item.title)
 
-            if url_key and url_key in seen_urls:
+            # Only deduplicate by URL if it's a real URL (not a placeholder)
+            if url_key and url_key in seen_urls and self._has_real_url(item.url):
                 continue
             if title_key in seen_titles:
                 continue
 
-            if url_key:
+            if url_key and self._has_real_url(item.url):
                 seen_urls.add(url_key)
             seen_titles.add(title_key)
             unique.append(item)
@@ -124,7 +125,9 @@ class SearchAggregator:
 
     @staticmethod
     def _has_real_url(url: str) -> bool:
-        return bool(url) and url not in ("", "无提供", "无", "暂无", "manual://")
+        return bool(url) and url not in ("", "无提供", "无", "暂无", "manual://") and not any(
+            p in url for p in ("模拟", "mock", "example")
+        )
 
     @staticmethod
     def _titles_match(a: str, b: str) -> bool:

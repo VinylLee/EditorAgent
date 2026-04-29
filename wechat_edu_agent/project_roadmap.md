@@ -11,7 +11,7 @@
 | Phase 1 — 核心管线 | ✅ 完成 | 文章写作、事实抽取、标题生成、审核、润色、封面提示词 |
 | Phase 1.1 — Prompt & 审核逻辑优化 | ✅ 完成 | 事实边界强化、幻觉检测修复、分数阈值调整 |
 | Phase 2 — 联网搜索 | ✅ 完成 | DashScope + Tavily + DuckDuckGo URL 回填 + 多源聚合 |
-| Phase 3 — 新闻查重 & URL 增强 | 🔲 规划中 | 去重新闻、正文内嵌来源链接 |
+| Phase 3 — 新闻查重 & URL 增强 | 🔄 进行中 | 正文内嵌来源链接（完成）、新闻去重（规划中） |
 | Phase 4 — 多模型路由 | 🔲 规划中 | 不同 Agent 使用不同模型 |
 | Phase 5 — 工程化 & 部署 | 🔲 规划中 | 测试、Docker、CI |
 | Phase 6 — 多模态封面 | 🔲 未开始 | AI 生成封面图 |
@@ -59,14 +59,15 @@
 
 ## Phase 3 — 新闻查重 & URL 增强 🔜
 
-### 3.1 正文内嵌参考来源链接（当前状态：仅文末附 URL）
+### 3.1 正文内嵌参考来源链接 ✅
 
-**问题：** 目前 `_append_source_url()` 只在文章末尾追加一行 `> 参考来源：[domain](url)`。对于有多条参考新闻的文章，缺少逐条标注。
+**状态：已完成。** 文章正文现支持内嵌来源媒体名称标记，文末汇总列出所有新闻来源 URL。
 
-**改进方案：**
-- 在 ArticleWriter prompt 的结构要求中，明确要求第 1 段新闻事件描述中嵌入来源标记
-- 格式示例：`据《中国青年报》报道，……`
-- 如果文章引用多则新闻，每则首次出现时标注来源
+**改动摘要：**
+- `ArticleWriter.write()` 新增 `source_list` 参数，将所有新闻来源（含媒体名称 + URL）注入 prompt
+- `ARTICLE_WRITE_PROMPT` 强化要求：正文第 1 段用《》标注来源媒体名称，如 `据《中国青年报》报道……`
+- `Workflow._append_source_url()` 重写：遍历所有新闻项，去重后列出完整参考来源列表（`---` + `**参考来源：**`）
+- 涉及文件：`agent/article_writer.py`、`llm/prompts.py`、`agent/workflow.py`
 
 ### 3.2 新闻查重系统
 
@@ -111,8 +112,8 @@
 
 - [ ] **3.3.1** 新建 `search/dedup.py` — `SearchHistory` 类：读取/写入 `search_history.jsonl`，提供 `is_duplicate(news_item) -> bool`
 - [ ] **3.3.2** 在 `SearchAggregator` 或 `Workflow.run()` 中调用去重，过滤已见过的新闻
-- [ ] **3.3.3** 在 `ArticleWriter` prompt 中强化来源标注要求（正文内嵌媒体名称）
-- [ ] **3.3.4** 在 `Workflow._append_source_url()` 中支持多条参考来源（遍历 fact_extract 中的来源）
+- [x] **3.3.3** 在 `ArticleWriter` prompt 中强化来源标注要求（正文内嵌媒体名称）
+- [x] **3.3.4** 在 `Workflow._append_source_url()` 中支持多条参考来源
 
 ---
 
@@ -208,6 +209,5 @@ wechat_edu_agent/
 ## 下一步行动（按优先级）
 
 1. **Phase 3.2** — 新闻查重（轻量方案 A），防止重复内容
-2. **Phase 3.1** — 正文内嵌来源链接，提升文章可信度
-3. **Phase 4** — 多模型路由，降低 API 成本
-4. **Phase 5** — 测试 + Docker，提升工程可靠性
+2. **Phase 4** — 多模型路由，降低 API 成本
+3. **Phase 5** — 测试 + Docker，提升工程可靠性

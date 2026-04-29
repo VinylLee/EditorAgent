@@ -13,7 +13,7 @@ from agents.polish_agent import PolishAgent
 from agents.review_agent import ReviewAgent
 from agents.title_optimizer import TitleOptimizer
 from agents.title_risk_agent import TitleRiskAgent
-from models.schemas import RunReport
+from models.schemas import NewsItem, RunReport
 from search.base import SearchProvider
 from utils.file_utils import create_run_dir, write_json, write_text
 from utils.logger import get_logger
@@ -78,6 +78,7 @@ class Workflow:
             raw_text=search_result.raw_text,
             fact_extract=fact_extract,
             article_angle=article_angle,
+            source_list=search_result.items,
         )
         warnings.extend(warning)
         logger.info(
@@ -186,7 +187,7 @@ class Workflow:
         polished_article = self._strip_fact_tags(polished_article)
 
         final_article = self.formatter.apply_title(polished_article, selection.final_title)
-        final_article = self._append_source_url(final_article, selected)
+        final_article = self._append_source_url(final_article, search_result.items)
         logger.info("Final article formatted")
 
         logger.info("Generating cover prompt")
@@ -256,16 +257,31 @@ class Workflow:
         return cleaned
 
     @staticmethod
-    def _append_source_url(article: str, selected) -> str:
-        url = (selected.url or "").strip()
-        source = (selected.source or "").strip()
-        if not url or url == "manual://":
+    def _append_source_url(article: str, news_items: List[NewsItem]) -> str:
+        valid = [
+            item for item in news_items
+            if item.source and item.source.strip()
+            and item.source.strip() not in ("用户提供", "网络来源", "未知来源")
+        ]
+        if not valid:
             return article
-        if source and source not in ("用户提供", "网络来源", "未知来源"):
-            line = f"\n\n> 参考来源：[{source}]({url})"
-        else:
-            line = f"\n\n> 参考来源：{url}"
-        return article + line
+
+        seen_sources: set = set()
+        ref_lines = ["", "", "---", "**参考来源：**"]
+        for item in valid:
+            source = item.source.strip()
+            if source in seen_sources:
+                continue
+            seen_sources.add(source)
+            url = item.url.strip() if item.url else ""
+            if url and url != "manual://" and not any(
+                placeholder in url for placeholder in ("模拟", "mock", "example")
+            ):
+                ref_lines.append(f"- [{source}]({url})")
+            else:
+                ref_lines.append(f"- {source}")
+
+        return article + "\n".join(ref_lines)
 
     def _build_report_markdown(self, report: RunReport) -> str:
         lines = [

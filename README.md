@@ -287,7 +287,7 @@ CoverPromptGenerator.generate(title, article) → CoverPrompt
 
 ### 步骤 11：输出 — 写入文件
 
-文章末尾自动附加新闻来源 URL（如有）。所有输出写入 `outputs/YYYYMMDD_HHMM_<topic>/`：
+文章末尾自动附加所有新闻来源 URL（去重后汇总列出）。正文第 1 段要求用《》标注来源媒体名称。所有输出写入 `outputs/YYYYMMDD_HHMM_<topic>/`：
 
 | 文件 | 内容 |
 |------|------|
@@ -307,6 +307,6 @@ CoverPromptGenerator.generate(title, article) → CoverPrompt
 - **搜索可插拔**：`SearchProvider` ABC，已实现 DashScope / Tavily / Manual 三种 Provider，支持 auto 多源聚合
 - **事实锚定**：事实提取结果是写作和审核的单一事实来源（Single Source of Truth），Review 区分"事实断言"与"观点分析"，防止误报
 - **审核分级**：<70 硬失败 → 70-84 软重写 → ≥85 通过；仅 hallucination_risks（具体事实编造）触发硬失败，unsupported_claims 降级为软警告
-- **来源追溯**：文章开头注明新闻来源和日期，末尾附加原文链接，确保可溯源
+- **来源追溯**：正文第 1 段要求标注来源媒体名称（用《》标出），文末汇总列出所有新闻来源 URL，确保可溯源和多源透明
 - **JSON 容错**：每轮 LLM JSON 输出均有多层回退：解析 → 修复 → 默认值
 - **LLM 追踪**：所有调用记录到 `llm_trace.jsonl`，包含完整 prompt/response/timestamp，便于调试和成本分析

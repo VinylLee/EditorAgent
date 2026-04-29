@@ -1,101 +1,141 @@
-"""DashScope search provider using enable_search=True.
+"""DashScope search provider using native DashScope protocol with enable_source=True.
 
-Uses DashScope's OpenAI-compatible API with web search enabled.
-The model searches the web and returns synthesized news content.
-
-DashScope does NOT return source URLs in its response. To fill in missing
-URLs, this provider can optionally query DuckDuckGo Lite (free, no API key)
-to look up article links by title.
+Uses DashScope's native SDK to enable web search and retrieve source URLs directly.
+No need for DuckDuckGo fallback when enable_source is properly configured.
 """
 
 from __future__ import annotations
 
 import json
 import re
-import urllib.parse
-import urllib.request
 from datetime import datetime
-from typing import List
+from typing import List, Dict, Any
 
-from openai import OpenAI
+import dashscope
+from dashscope import Generation
+from dashscope.api_entities.dashscope_response import GenerationResponse
 
 from models.schemas import NewsItem, SearchResult
 from search.base import SearchProvider
+from llm.prompts import SEARCH_SYSTEM_PROMPT
 
-DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-DASHSCOPE_SEARCH_MODEL = "qwen-max"
-
-SEARCH_SYSTEM_PROMPT = """你是一个教育新闻搜索助手。请搜索与中国教育政策、减负、高考、教育内卷相关的近期新闻。
-
-要求：
-1. 搜索最近30天内的新闻
-2. 返回完整的新据报道内容，包括标题、来源、发布日期、URL和正文
-3. 优先选择具有话题性和争议性的新闻
-4. 每则新闻用 "---news-item---" 分隔
-5. 每则新闻内部用 "---meta---" 分隔元数据和正文
-6. 元数据部分使用 JSON 格式
-
-输出格式示例：
----news-item---
----meta---
-{"title": "新闻标题", "source": "新闻来源", "date": "2026-04-20", "url": "https://..."}
----body---
-新闻正文内容...
----end---
-
-请确保返回至少1条、最多5条新闻。"""
+DASHSCOPE_SEARCH_MODEL = "qwen-plus"  # 支持 enable_source 的模型: qwen-plus, qwen-max, qwen3.5-plus 等
 
 
 class DashScopeSearchProvider(SearchProvider):
-    """Search provider using DashScope (Alibaba Cloud) with web search enabled."""
+    """Search provider using DashScope native protocol with web search and source URLs."""
 
     def __init__(
         self, api_key: str, model: str | None = None, enable_url_lookup: bool = True
     ) -> None:
         if not api_key:
             raise ValueError("DASHSCOPE_API_KEY is required for DashScope search")
+        
+        # 🔑 初始化 DashScope SDK（原生协议）
+        dashscope.api_key = api_key
         self.api_key = api_key
         self.model = model or DASHSCOPE_SEARCH_MODEL
-        self.enable_url_lookup = enable_url_lookup
-        self.client = OpenAI(
-            base_url=DASHSCOPE_BASE_URL,
-            api_key=api_key,
-        )
+        self.enable_url_lookup = enable_url_lookup  # 保留参数，但原生协议下通常不需要
 
     def search(self, topic: str, news_type: str, limit: int = 5) -> SearchResult:
         user_prompt = self._build_search_prompt(topic, news_type, limit)
 
         try:
-            response = self.client.chat.completions.create(
+            # 🔑 使用 DashScope 原生 SDK 调用，启用 enable_source
+            response: GenerationResponse = Generation.call(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": SEARCH_SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.3,
-                max_tokens=4096,
-                extra_body={"enable_search": True},
+                result_format="message",  # 🔑 必须设置为 message 格式
+                enable_search=True,       # 🔑 启用联网搜索
+                search_options={
+                    "enable_source": True,      # 🔑 核心：返回搜索来源（含URL）
+                    "enable_citation": True,    # 在正文中添加角标标注 [ref_1]
+                    "citation_format": "[ref_<number>]",
+                    "forced_search": True,      # 强制执行搜索，避免模型跳过
+                },
             )
-            raw_text = response.choices[0].message.content or ""
+            
+            # 检查响应状态
+            if response.status_code != 200:
+                raise RuntimeError(f"DashScope API error: {response.code} - {response.message}")
+            
+            # 提取模型回答
+            raw_text = response.output.choices[0].message.content or ""
+            
+            # 🔑 提取搜索来源信息（含URL）- 兼容 SDK 在不同版本的返回结构
+            search_sources = self._extract_search_sources(response)
+            
         except Exception as exc:
             raise RuntimeError(f"DashScope search failed: {exc}") from exc
 
         if not raw_text.strip():
             raise RuntimeError("DashScope search returned empty content")
 
-        items = self._parse_news_items(raw_text, news_type)
+        # 🔑 解析新闻项时传入 search_sources 映射
+        items = self._parse_news_items(raw_text, news_type, search_sources)
         if not items:
-            items = self._fallback_single_item(raw_text, news_type)
+            items = self._fallback_single_item(raw_text, news_type, search_sources)
 
-        # Fill in missing URLs via free DuckDuckGo lookup
+        # 原生协议已返回URL，DuckDuckGo 回退通常不需要，但保留作为双重保障
         if self.enable_url_lookup:
             missing = sum(1 for it in items if not self._is_real_url(it.url))
-            if missing:
+            if missing > 0:
                 self._lookup_urls(items)
 
         return SearchResult(items=items, raw_text=raw_text, provider="dashscope")
 
+    @staticmethod
+    def _extract_search_sources(response: GenerationResponse) -> Dict[int, Dict[str, str]]:
+        """Extract source map from DashScope response across object/dict/list variants."""
+        search_sources: Dict[int, Dict[str, str]] = {}
+        output = getattr(response, "output", None)
+        if output is None:
+            return search_sources
+
+        search_info = getattr(output, "search_info", None)
+        if not search_info and isinstance(output, dict):
+            search_info = output.get("search_info")
+        if not search_info:
+            return search_sources
+
+        if isinstance(search_info, dict):
+            results = search_info.get("search_results") or search_info.get("results") or []
+        else:
+            results = getattr(search_info, "search_results", None) or getattr(search_info, "results", None) or []
+
+        for pos, src in enumerate(results, start=1):
+            if isinstance(src, dict):
+                idx = src.get("index") or src.get("ref_index") or pos
+                url = src.get("url", "")
+                title = src.get("title", "")
+                site_name = src.get("siteName") or src.get("site_name", "")
+                icon = src.get("icon", "")
+            else:
+                idx = getattr(src, "index", None) or getattr(src, "ref_index", None) or pos
+                url = getattr(src, "url", "")
+                title = getattr(src, "title", "")
+                site_name = getattr(src, "siteName", "") or getattr(src, "site_name", "")
+                icon = getattr(src, "icon", "")
+
+            try:
+                idx_int = int(idx)
+            except (TypeError, ValueError):
+                idx_int = pos
+
+            search_sources[idx_int] = {
+                "url": url or "",
+                "title": title or "",
+                "siteName": site_name or "",
+                "icon": icon or "",
+            }
+
+        return search_sources
+
     def _build_search_prompt(self, topic: str, news_type: str, limit: int) -> str:
+        """构建搜索提示词，要求模型返回带 ref_index 的结构化格式"""
         type_hint = {
             "教育部政策": "教育部发布的最新政策、通知、文件",
             "学校案例": "各地学校的具体做法、改革案例、典型事件",
@@ -106,10 +146,19 @@ class DashScopeSearchProvider(SearchProvider):
             f"请搜索关于「{topic}」的近期教育新闻。\n"
             f"新闻类型偏好：{type_hint}。\n"
             f"最多返回 {limit} 条最相关的新闻。\n"
-            f"请确保返回完整的新闻正文内容，不要只给摘要。"
+            f"请确保返回完整的新闻正文内容，不要只给摘要。\n"
+            f"请严格按以下格式返回每条新闻（ref_index 对应搜索来源的角标数字）：\n"
+            f"---news-item---\n"
+            f"---meta---\n"
+            f'{{"title": "标题", "source": "来源", "date": "YYYY-MM-DD", "url": "URL", "ref_index": 1}}\n'
+            f"---body---\n"
+            f"新闻正文内容...\n"
+            f"---end---"
         )
 
-    def _parse_news_items(self, raw_text: str, news_type: str) -> List[NewsItem]:
+    def _parse_news_items(self, raw_text: str, news_type: str, 
+                         search_sources: Dict[int, Dict[str, str]]) -> List[NewsItem]:
+        """解析新闻项，优先从 search_sources 填充 URL"""
         items: List[NewsItem] = []
         blocks = re.split(r"---news-item---", raw_text)
 
@@ -135,10 +184,20 @@ class DashScopeSearchProvider(SearchProvider):
             source = meta.get("source", "网络来源")
             published_at = meta.get("date", "未知")
             url = meta.get("url", "")
+            ref_index = meta.get("ref_index")  # 🔑 获取模型返回的角标索引
 
-            # Fallback: extract URL from body text if meta didn't provide one
-            if not url or url in ("无提供", "无", "暂无"):
+            # 🔑 优先级1: 从 search_sources 中获取URL（最可靠）
+            if (not url or url in ("无提供", "无", "暂无", "")) and ref_index and ref_index in search_sources:
+                src_info = search_sources[ref_index]
+                url = src_info.get("url", "")
+                if not source or source in ("未知来源", "网络来源"):
+                    source = src_info.get("siteName", source)
+
+            # 优先级2: 从正文中提取URL（兜底）
+            if not url or url in ("无提供", "无", "暂无", ""):
                 url = self._extract_url_from_text(body)
+            
+            # 提取域名作为来源名称
             if (not source or source in ("未知来源", "网络来源")) and url:
                 source = self._extract_domain(url)
 
@@ -150,7 +209,7 @@ class DashScopeSearchProvider(SearchProvider):
                 title=title,
                 source=source,
                 published_at=published_at,
-                url=url,
+                url=url,  # 🔑 此时 url 应已填充
                 summary=summary,
                 core_facts=core_facts,
                 parent_emotion_points=["教育焦虑", "升学压力"],
@@ -162,18 +221,29 @@ class DashScopeSearchProvider(SearchProvider):
 
         return items
 
-    def _fallback_single_item(self, raw_text: str, news_type: str) -> List[NewsItem]:
+    def _fallback_single_item(self, raw_text: str, news_type: str,
+                           search_sources: Dict[int, Dict[str, str]]) -> List[NewsItem]:
+        """兜底解析：当结构化解析失败时使用"""
         title = self._infer_title(raw_text)
         summary = raw_text[:300].strip()
         core_facts = self._extract_sentences(raw_text, min_count=2)
+        
+        # 🔑 尝试从 search_sources 获取第一个URL作为fallback
+        url = ""
+        source = "DashScope搜索"
+        if search_sources:
+            first_src = next(iter(search_sources.values()), None)
+            if first_src:
+                url = first_src.get("url", "")
+                source = first_src.get("siteName", "DashScope搜索")
 
         return [
             NewsItem(
                 news_type=news_type,
                 title=title,
-                source="DashScope搜索",
+                source=source,
                 published_at=datetime.now().strftime("%Y-%m-%d"),
-                url="",
+                url=url,
                 summary=summary,
                 core_facts=core_facts,
                 parent_emotion_points=["教育焦虑"],
@@ -183,6 +253,8 @@ class DashScopeSearchProvider(SearchProvider):
             )
         ]
 
+    # ==================== 以下辅助方法保持不变 ====================
+    
     @staticmethod
     def _infer_title(text: str) -> str:
         first_line = text.splitlines()[0].strip()
@@ -192,14 +264,14 @@ class DashScopeSearchProvider(SearchProvider):
 
     @staticmethod
     def _extract_sentences(text: str, min_count: int = 2) -> List[str]:
-        sentences = re.split(r"[。！？!?\n]", text)
+        sentences = re.split(r"[。！？!?\\n]", text)
         facts = [s.strip() for s in sentences if len(s.strip()) > 10]
         return facts[:max(min_count, 3)] if facts else ["新闻内容待核实"]
 
     @staticmethod
     def _extract_url_from_text(text: str) -> str:
         """Try to find a real news URL in the body text."""
-        url_pattern = re.compile(r"https?://[^\s\)）\]】一-鿿]+")
+        url_pattern = re.compile(r"https?://[^\s\)）\]】\u4e00-\u9fff]+")
         matches = url_pattern.findall(text)
         for url in matches:
             url = url.rstrip(".,;:!?")
@@ -223,10 +295,15 @@ class DashScopeSearchProvider(SearchProvider):
 
     @staticmethod
     def _is_real_url(url: str) -> bool:
-        return bool(url) and url not in ("", "无提供", "无", "暂无", "manual://")
+        return bool(url) and url not in ("", "无提供", "无", "暂无", "manual://") and not any(
+            p in url for p in ("模拟", "mock", "example")
+        )
 
     def _lookup_urls(self, items: List[NewsItem]) -> None:
-        """Use DuckDuckGo Lite (free, no API key) to find URLs for items that lack them."""
+        """Use DuckDuckGo Lite as fallback for missing URLs (rarely needed with enable_source)."""
+        import urllib.parse
+        import urllib.request
+        
         for item in items:
             if self._is_real_url(item.url):
                 continue
@@ -238,8 +315,10 @@ class DashScopeSearchProvider(SearchProvider):
 
     @staticmethod
     def _search_duckduckgo(query: str) -> str:
-        """Search DuckDuckGo Lite and return the first non-DDG result URL.
-        Uses only stdlib (urllib), no extra dependencies or API keys."""
+        """Search DuckDuckGo Lite and return the first non-DDG result URL."""
+        import urllib.parse
+        import urllib.request
+        
         encoded = urllib.parse.quote(query)
         ddg_url = f"https://lite.duckduckgo.com/lite/?q={encoded}"
 
@@ -253,7 +332,6 @@ class DashScopeSearchProvider(SearchProvider):
         except Exception:
             return ""
 
-        # DuckDuckGo Lite: result links have class="result-link"
         for pat in [
             re.compile(r'<a[^>]*class="result-link"[^>]*href="(https?://[^"]+)"'),
             re.compile(r'<a[^>]*href="(https?://[^"]+)"[^>]*class="result-link"'),
@@ -264,7 +342,6 @@ class DashScopeSearchProvider(SearchProvider):
                 if "duckduckgo.com" not in url:
                     return url
 
-        # Fallback: grab first plausible external link
         for m in re.finditer(r'href="(https?://[^"]+)"', html):
             url = m.group(1)
             if "duckduckgo.com" not in url and len(url) > 25:

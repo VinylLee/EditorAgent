@@ -11,15 +11,34 @@ class ArticleWriter:
     def __init__(self, llm_client) -> None:
         self.llm_client = llm_client
 
+    @staticmethod
+    def _format_source_list(news_items: List[NewsItem]) -> str:
+        valid = [
+            item for item in news_items
+            if item.source and item.source.strip()
+            and item.source.strip() not in ("用户提供", "网络来源", "未知来源")
+        ]
+        if not valid:
+            return ""
+        lines = ["\n\n可参考的新闻来源列表（请在正文中标注来源媒体名称，并在文末用Markdown格式列出「参考来源」章节，包含来源媒体名称和URL）："]
+        for i, item in enumerate(valid, start=1):
+            source = item.source.strip()
+            title = item.title.strip()
+            url = item.url.strip() if item.url else "（无URL）"
+            lines.append(f"{i}. {source} | {url} | 标题：{title}")
+        return "\n".join(lines)
+
     def write(
         self,
         news: NewsItem,
         raw_text: str,
         fact_extract: FactExtractResult,
         article_angle: str,
+        source_list: List[NewsItem] | None = None,
     ) -> Tuple[str, List[str]]:
         news_json = json.dumps(news.model_dump(), ensure_ascii=False, indent=2)
         fact_json = json.dumps(fact_extract.model_dump(), ensure_ascii=False, indent=2)
+        source_block = self._format_source_list(source_list or [])
         prompt = (
             ARTICLE_WRITE_PROMPT
             + "\n\n新闻信息:\n"
@@ -30,6 +49,7 @@ class ArticleWriter:
             + (article_angle or "")
             + "\n\n新闻素材:\n"
             + (raw_text or "")
+            + source_block
         )
         article = self.llm_client.chat_text(
             SYSTEM_PROMPT, prompt, request_tag="article_write"
