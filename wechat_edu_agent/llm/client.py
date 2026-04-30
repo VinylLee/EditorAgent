@@ -29,6 +29,7 @@ class LLMClient:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.trace_path: Path | None = None
+        self.last_finish_reason: str | None = None
 
     @classmethod
     def from_config(cls, config: AppConfig) -> "LLMClient":
@@ -103,7 +104,10 @@ class LLMClient:
             trace["error"] = str(exc)
             self._append_trace(trace)
             raise
-        content = response.choices[0].message.content or ""
+        choice = response.choices[0]
+        self.last_finish_reason = choice.finish_reason
+        content = choice.message.content or ""
+        trace["finish_reason"] = self.last_finish_reason
         trace["response"] = content
         self._append_trace(trace)
         return content

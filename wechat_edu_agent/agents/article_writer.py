@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import List, Tuple
 
+from app_constants import DEFAULT_LONG_FORM_MAX_TOKENS
 from llm.prompts import ARTICLE_WRITE_PROMPT, SYSTEM_PROMPT
 from models.schemas import FactExtractResult, NewsItem
 
@@ -52,9 +53,14 @@ class ArticleWriter:
             + source_block
         )
         article = self.llm_client.chat_text(
-            SYSTEM_PROMPT, prompt, request_tag="article_write"
+            SYSTEM_PROMPT,
+            prompt,
+            request_tag="article_write",
+            max_tokens=DEFAULT_LONG_FORM_MAX_TOKENS,
         ).strip()
         warnings: List[str] = []
         if not article:
             warnings.append("Article generation returned empty content.")
+        elif getattr(self.llm_client, "last_finish_reason", None) == "length":
+            warnings.append("Article generation was truncated by token limit.")
         return article, warnings

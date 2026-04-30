@@ -7,6 +7,7 @@ from app_constants import (
     ARTICLE_WORD_COUNT_MAX,
     ARTICLE_WORD_COUNT_MIN,
     ARTICLE_WORD_COUNT_REVIEW_MAX,
+    DEFAULT_LONG_FORM_MAX_TOKENS,
 )
 from llm.json_schemas import REVIEW_SCHEMA
 from llm.prompts import REVIEW_PROMPT, REWRITE_PROMPT, SYSTEM_PROMPT
@@ -99,10 +100,14 @@ class ReviewAgent:
             SYSTEM_PROMPT,
             prompt,
             request_tag="article_rewrite",
+            max_tokens=DEFAULT_LONG_FORM_MAX_TOKENS,
         ).strip()
         warnings: List[str] = []
         if not text:
             warnings.append("Article rewrite returned empty content; fallback used.")
+            return article_markdown, warnings
+        if getattr(self.llm_client, "last_finish_reason", None) == "length":
+            warnings.append("Article rewrite was truncated by token limit; fallback used.")
             return article_markdown, warnings
         return text, warnings
 
