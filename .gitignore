@@ -51,3 +51,9 @@ secrets/
 /wechat_edu_agent/outputs/
 /outputs/
 /wechat_edu_agent/sample_news/
+
+# =========================================
+# 打包和发布产物
+# =========================================
+/dist/
+/build/
