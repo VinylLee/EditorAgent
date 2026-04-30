@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from app_constants import DEFAULT_NEWS_TYPE, DEFAULT_TOPIC, VALID_SEARCH_PROVIDERS
@@ -37,6 +38,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    if getattr(sys, "frozen", False) and len(sys.argv) == 1:
+        sys.argv.append("gui")
+
     parser = build_parser()
     args = parser.parse_args()
     logger = get_logger()
