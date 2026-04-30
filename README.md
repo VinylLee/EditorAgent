@@ -7,7 +7,9 @@
 ## 项目结构
 
 ```
-main.py                    # CLI 入口，参数解析，Provider 工厂
+wechat_edu_agent/main.py    # CLI / GUI 入口，参数解析
+wechat_edu_agent/launcher.py # 共享启动逻辑，CLI 和 GUI 共用
+wechat_edu_agent/gui.py     # 简单图形启动器（Tkinter）
 config.py                  # .env → AppConfig 配置加载
 agents/
   workflow.py              # 流水线编排器（核心）
@@ -85,16 +87,19 @@ LLM_TEMPERATURE=0.7
 
 ```bash
 # 联网搜索模式（需配好搜索 API Key）
-python main.py run --search-provider auto --topic "教育内卷"
+python wechat_edu_agent/main.py run --search-provider auto --topic "教育内卷"
 
 # 手动输入模式（无需搜索 API）
-python main.py run --manual-news ./news/sample_news.txt
+python wechat_edu_agent/main.py run --manual-news ./news/sample_news.txt
+
+# 图形界面启动器
+python wechat_edu_agent/main.py gui
 ```
 
 ## CLI 参数详解
 
 ```
-python main.py run [OPTIONS]
+python wechat_edu_agent/main.py run [OPTIONS]
 ```
 
 | 参数 | 必填 | 默认值 | 说明 |
@@ -104,6 +109,19 @@ python main.py run [OPTIONS]
 | `--topic` | 否 | `教育内卷` | 搜索关键词，同时用作输出目录名 |
 | `--news-type` | 否 | `社会事件` | `教育部政策` / `学校案例` / `社会事件` |
 
+## 图形界面
+
+启动 `python wechat_edu_agent/main.py gui` 后会打开一个简单窗口，支持填写与 CLI 相同的参数：
+
+- `search-provider`
+- `manual-news`
+- `topic`
+- `news-type`
+
+点击运行后，窗口会在日志区域实时显示和 CLI 相同的运行进度，完成后会弹出结果路径提示。
+
+GUI 和 CLI 现在共用同一套启动逻辑，位于 `wechat_edu_agent/launcher.py`。这样可以保证两种入口的参数校验、provider 选择和流水线执行行为一致。
+
 **默认行为**：如果不传任何参数，程序使用 `.env` 中 `SEARCH_PROVIDER=manual`，报错提示你提供 `--manual-news` 文件。要启用联网搜索，将 `SEARCH_PROVIDER` 设为 `auto` / `dashscope` / `tavily` 并配好对应 API Key。
 
 ## 运行示例
@@ -112,26 +130,26 @@ python main.py run [OPTIONS]
 
 ```bash
 # DashScope 联网搜索（通义千问自动搜索网页并整合新闻）
-python main.py run --search-provider dashscope --topic "高考改革"
+python wechat_edu_agent/main.py run --search-provider dashscope --topic "高考改革"
 
 # Tavily 搜索 API
-python main.py run --search-provider tavily --topic "减负政策"
+python wechat_edu_agent/main.py run --search-provider tavily --topic "减负政策"
 
 # 自动模式（DashScope + Tavily 串联，任一成功即可）
-python main.py run --search-provider auto --topic "教育内卷"
+python wechat_edu_agent/main.py run --search-provider auto --topic "教育内卷"
 
 # 指定新闻类型偏好
-python main.py run --search-provider auto --topic "教育内卷" --news-type "学校案例"
+python wechat_edu_agent/main.py run --search-provider auto --topic "教育内卷" --news-type "学校案例"
 ```
 
 ### 手动输入
 
 ```bash
 # 最简单用法
-python main.py run --manual-news ./news/sample_news.txt
+python wechat_edu_agent/main.py run --manual-news ./news/sample_news.txt
 
 # 指定主题和类型
-python main.py run --manual-news ./news/sample_news.txt \
+python wechat_edu_agent/main.py run --manual-news ./news/sample_news.txt \
     --topic "减负 内卷" \
     --news-type "社会事件"
 ```

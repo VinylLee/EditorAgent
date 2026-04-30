@@ -11,9 +11,9 @@ Thumbs.db
 .claude/
 .project
 .classpath
-*/CLAUDE.md
-*/项目背景.md
-*/project_roadmap.md
+/wechat_edu_agent/CLAUDE.md
+/wechat_edu_agent/项目背景.md
+/wechat_edu_agent/project_roadmap.md
 
 # ==========================================
 # Python 科学计算环境
@@ -36,8 +36,8 @@ env/
 # ==========================================
 # 敏感信息与临时文件
 # ==========================================
-*/.env
-*/.env.*
+/wechat_edu_agent/.env
+/wechat_edu_agent/.env.*
 *.pem
 *.key
 secrets/
@@ -48,5 +48,6 @@ secrets/
 # ==========================================
 # 实验数据与中间产物（按需保留）
 # ==========================================
-*/outputs/
-*/sample_news/
+/wechat_edu_agent/outputs/
+/outputs/
+/wechat_edu_agent/sample_news/
