@@ -56,3 +56,6 @@ secrets/
 # =========================================
 /dist/
 /build/
+# 保留文档中的打包指南
+!/docs/PACKAGING_GUIDE.md
+/docs/
