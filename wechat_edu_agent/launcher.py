@@ -9,6 +9,7 @@ from llm.client import LLMClient
 from search.aggregator import SearchAggregator
 from search.base import SearchProvider
 from search.dashscope_search import DashScopeSearchProvider
+from search.dedup import SearchHistory
 from search.manual_input import ManualNewsProvider
 from search.tavily_search import TavilySearchProvider
 from utils.logger import get_logger
@@ -92,5 +93,19 @@ def run_pipeline(
     )
 
     llm_client = LLMClient.from_config(config)
-    workflow = Workflow(llm_client, output_dir=config.output_dir)
+    deduplicator = None
+    if config.semantic_dedup_enabled:
+        deduplicator = SearchHistory(
+            store_dir=config.output_dir,
+            llm_client=llm_client,
+            embedding_model=config.embedding_model,
+            similarity_threshold=config.dedup_similarity_threshold,
+            title_threshold=config.dedup_title_threshold,
+            recent_days=config.dedup_recent_days,
+        )
+    workflow = Workflow(
+        llm_client,
+        output_dir=config.output_dir,
+        news_deduplicator=deduplicator,
+    )
     return workflow.run(provider=provider, topic=topic, news_type=news_type)

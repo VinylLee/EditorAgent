@@ -34,6 +34,7 @@ search/
   dashscope_search.py      # DashScope 联网搜索（通义千问 enable_search）
   tavily_search.py         # Tavily Search API 搜索
   aggregator.py            # 多源聚合、去重、降级
+  dedup.py                 # 语义去重、历史索引、embedding 相似度判断
 utils/
   json_utils.py            # JSON 容错解析与修复
   text_utils.py            # 中文字数统计、slugify
@@ -165,6 +166,59 @@ python wechat_edu_agent/main.py run --manual-news ./news/sample_news.txt \
            ├─ auto      → DashScope → Tavily 依次尝试
            └─ manual    → 报错：请提供 --manual-news 或切换 Provider
 ```
+
+## 新闻语义去重与 Embedding
+
+### embedding 存在哪里
+
+历史索引默认保存在 outputs/search_history.jsonl。每一行是一条历史记录，主要包含：
+
+- `title`、`source`、`url`、`published_at`
+- `semantic_text`：用于向量化的拼接文本
+- `vector`：embedding 向量。如果 embedding 不可用，这个字段会为空
+- `content_hash`、`title_key`、`url_key`：用于精确匹配和回退判断
+
+### semantic_text 怎么拼
+
+系统不是只拿标题去做向量，而是把这些字段拼成一段文本再去嵌入：
+
+- 标题
+- 来源媒体
+- 发布时间
+- 摘要
+- 核心事实
+- 家长情绪触点
+
+这样做的目的，是让语义向量同时覆盖标题、主题和内容要点，而不是只盯着一个短标题。
+
+### 去重流程
+
+每次搜索后，系统会按下面的顺序判断是否重复：
+
+1. 先做 URL 精确匹配，完全相同直接判重
+2. 再做标题标准化匹配，去掉空白和常见标点后判断
+3. 再做标题字符与 bigram 相似度匹配
+4. 如果 embedding 可用，再做向量余弦相似度匹配
+5. 命中的重复新闻会被过滤，不进入后续选题和写作流程
+
+### embedding 从哪里来
+
+embedding 使用 OpenAI-compatible 的 embeddings 接口，和主 LLM 客户端共用同一套配置风格。默认情况下：
+
+- `EMBEDDING_BASE_URL` 未配置时，沿用 `LLM_BASE_URL`
+- `EMBEDDING_API_KEY` 未配置时，沿用 `LLM_API_KEY`
+- `EMBEDDING_MODEL` 默认是 `text-embedding-3-small`
+
+相关开关和阈值：
+
+- `ENABLE_SEMANTIC_DEDUP=1` 启用语义去重
+- `DEDUP_SIMILARITY_THRESHOLD=0.86` 控制向量相似度阈值
+- `DEDUP_TITLE_THRESHOLD=0.8` 控制标题相似度阈值
+- `DEDUP_RECENT_DAYS=14` 控制“新近新闻”的阈值衰减窗口
+
+### 失败时会怎样
+
+如果 embedding 接口不可用，系统不会直接中断，而是自动退回到标题和 URL 规则去重。这样即使你的 LLM 服务没有 embeddings 能力，主流程也还能继续跑，只是语义去重的效果会弱一些。
 
 ## 工作流详解（11 步）
 

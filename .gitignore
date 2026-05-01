@@ -37,7 +37,6 @@ env/
 # 敏感信息与临时文件
 # ==========================================
 /wechat_edu_agent/.env
-/wechat_edu_agent/.env.*
 *.pem
 *.key
 secrets/

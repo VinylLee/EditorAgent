@@ -142,3 +142,9 @@ class RunReport(BaseModel):
     title_risk_count: int = 0
     auto_rewrite_performed: bool = False
     human_check_required: bool = False
+    dedup_enabled: bool = False
+    dedup_removed_count: int = 0
+    dedup_history_size: int = 0
+    dedup_similarity_threshold: float = 0.0
+    dedup_title_threshold: float = 0.0
+    dedup_recent_days: int = 0

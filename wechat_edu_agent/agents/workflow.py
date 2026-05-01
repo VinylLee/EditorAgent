@@ -17,15 +17,22 @@ from agents.title_risk_agent import TitleRiskAgent
 from app_constants import MAX_REVIEW_ROUNDS, PLACEHOLDER_URL_MARKERS, REFERENCE_SECTION_HEADER
 from models.schemas import NewsItem, RunReport
 from search.base import SearchProvider
+from search.dedup import DedupResult, SearchHistory
 from utils.file_utils import create_run_dir, write_json, write_text
 from utils.logger import get_logger
 from utils.text_utils import count_cjk_chars
 
 
 class Workflow:
-    def __init__(self, llm_client, output_dir: str) -> None:
+    def __init__(
+        self,
+        llm_client,
+        output_dir: str,
+        news_deduplicator: SearchHistory | None = None,
+    ) -> None:
         self.llm_client = llm_client
         self.output_dir = output_dir
+        self.news_deduplicator = news_deduplicator
         self.news_selector = NewsSelector(llm_client)
         self.fact_extract_agent = FactExtractAgent(llm_client)
         self.article_writer = ArticleWriter(llm_client)
@@ -56,6 +63,25 @@ class Workflow:
 
         write_json(run_dir / "search_result.json", search_result.model_dump())
         logger.info("Search result saved to %s", run_dir / "search_result.json")
+
+        dedup_result: DedupResult | None = None
+        if self.news_deduplicator:
+            dedup_result = self.news_deduplicator.filter_items(search_result.items, limit=5)
+            if dedup_result.warnings:
+                warnings.extend(dedup_result.warnings)
+            write_json(run_dir / "search_dedup.json", dedup_result.to_dict())
+            logger.info(
+                "Dedup done. kept=%d, dropped=%d, history=%d",
+                len(dedup_result.kept_items),
+                len(dedup_result.dropped_items),
+                dedup_result.history_size,
+            )
+            if not dedup_result.kept_items:
+                raise ValueError(
+                    "All candidate news were filtered by semantic deduplication. Try another topic or clear outputs/search_history.jsonl."
+                )
+            search_result = search_result.model_copy(update={"items": dedup_result.kept_items})
+            write_json(run_dir / "search_result.filtered.json", search_result.model_dump())
 
         logger.info("Selecting news from %d candidates", len(search_result.items))
         selection_result, warning = self.news_selector.select(search_result.items)
@@ -236,6 +262,18 @@ class Workflow:
             title_risk_count=len(title_risk.risky_titles),
             auto_rewrite_performed=auto_rewrite_performed,
             human_check_required=human_check_required,
+            dedup_enabled=bool(self.news_deduplicator),
+            dedup_removed_count=len(dedup_result.dropped_items) if dedup_result else 0,
+            dedup_history_size=dedup_result.history_size if dedup_result else 0,
+            dedup_similarity_threshold=(
+                self.news_deduplicator.similarity_threshold if self.news_deduplicator else 0.0
+            ),
+            dedup_title_threshold=(
+                self.news_deduplicator.title_threshold if self.news_deduplicator else 0.0
+            ),
+            dedup_recent_days=(
+                self.news_deduplicator.recent_days if self.news_deduplicator else 0
+            ),
         )
         write_text(run_dir / "report.md", self._build_report_markdown(report))
 
@@ -321,6 +359,12 @@ class Workflow:
             f"- title_risk_count: {report.title_risk_count}",
             f"- auto_rewrite_performed: {report.auto_rewrite_performed}",
             f"- human_check_required: {report.human_check_required}",
+            f"- dedup_enabled: {report.dedup_enabled}",
+            f"- dedup_removed_count: {report.dedup_removed_count}",
+            f"- dedup_history_size: {report.dedup_history_size}",
+            f"- dedup_similarity_threshold: {report.dedup_similarity_threshold}",
+            f"- dedup_title_threshold: {report.dedup_title_threshold}",
+            f"- dedup_recent_days: {report.dedup_recent_days}",
         ]
         if report.unsupported_claims:
             for claim in report.unsupported_claims:

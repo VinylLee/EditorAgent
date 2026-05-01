@@ -17,14 +17,22 @@ class LLMClient:
         base_url: str,
         api_key: str,
         model: str,
+        embedding_base_url: str | None = None,
+        embedding_api_key: str | None = None,
+        embedding_model: str | None = None,
         json_mode: str = "off",
         temperature: float = 0.7,
         max_tokens: int = 2048,
     ) -> None:
         self.client = OpenAI(base_url=base_url, api_key=api_key)
+        self.embedding_client = OpenAI(
+            base_url=embedding_base_url or base_url,
+            api_key=embedding_api_key or api_key,
+        )
         self.base_url = base_url
         self.api_key = api_key
         self.model = model
+        self.embedding_model = embedding_model or model
         self.json_mode = json_mode
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -37,6 +45,9 @@ class LLMClient:
             base_url=config.llm_base_url,
             api_key=config.llm_api_key,
             model=config.llm_model,
+            embedding_base_url=config.embedding_base_url,
+            embedding_api_key=config.embedding_api_key,
+            embedding_model=config.embedding_model,
             json_mode=config.json_mode,
             temperature=config.temperature,
             max_tokens=config.max_tokens,
@@ -130,3 +141,19 @@ class LLMClient:
             temperature=temperature,
             max_tokens=max_tokens,
         )
+
+    def embed_texts(self, texts: list[str], model: str | None = None) -> list[list[float]]:
+        cleaned_texts = [" ".join((text or "").split()) for text in texts]
+        filtered_texts = [text for text in cleaned_texts if text]
+        if not filtered_texts:
+            return []
+
+        response = self.embedding_client.embeddings.create(
+            model=model or self.embedding_model,
+            input=filtered_texts,
+        )
+        return [list(item.embedding) for item in response.data]
+
+    def embed_text(self, text: str, model: str | None = None) -> list[float]:
+        embeddings = self.embed_texts([text], model=model)
+        return embeddings[0] if embeddings else []
