@@ -14,13 +14,20 @@ from agents.polish_agent import PolishAgent
 from agents.review_agent import ReviewAgent
 from agents.title_optimizer import TitleOptimizer
 from agents.title_risk_agent import TitleRiskAgent
-from app_constants import MAX_REVIEW_ROUNDS, PLACEHOLDER_URL_MARKERS, REFERENCE_SECTION_HEADER
+from app_constants import (
+    ARTICLE_WORD_COUNT_MAX,
+    ARTICLE_WORD_COUNT_MIN,
+    ARTICLE_WORD_COUNT_TARGET,
+    MAX_REVIEW_ROUNDS,
+    PLACEHOLDER_URL_MARKERS,
+    REFERENCE_SECTION_HEADER,
+)
 from models.schemas import NewsItem, RunReport, TitleRiskResult
 from search.base import SearchProvider
 from search.dedup import DedupResult, SearchHistory
 from utils.file_utils import create_run_dir, write_json, write_text
 from utils.logger import get_logger
-from utils.text_utils import count_text_chars
+from utils.text_utils import clean_llm_article, count_text_chars
 
 
 class Workflow:
@@ -130,7 +137,7 @@ class Workflow:
                 article_markdown=reviewed_article,
                 fact_extract=fact_extract,
                 title_risk=empty_title_risk,
-                raw_text=search_result.raw_text,
+                raw_text="",
             )
             warnings.extend(warning)
             logger.info(
@@ -162,7 +169,7 @@ class Workflow:
                 article_markdown=reviewed_article,
                 review=review,
                 fact_extract=fact_extract,
-                raw_text=search_result.raw_text,
+                raw_text="",
             )
             warnings.extend(warning)
             reviewed_article = rewritten
@@ -182,7 +189,47 @@ class Workflow:
         )
         warnings.extend(warning)
         polished_article = self._strip_fact_tags(polished_article)
-        logger.info("Polish done. cjk_chars=%d", count_text_chars(polished_article))
+        polished_article = clean_llm_article(polished_article)
+        final_count = count_text_chars(polished_article)
+        logger.info("Polish done. cjk_chars=%d", final_count)
+
+        # Deterministic post-polish check: word count out of range triggers length-only repair
+        if final_count < ARTICLE_WORD_COUNT_MIN or final_count > ARTICLE_WORD_COUNT_MAX:
+            logger.warning(
+                "Polish output %d chars out of range [%d, %d]; triggering length-only repair.",
+                final_count,
+                ARTICLE_WORD_COUNT_MIN,
+                ARTICLE_WORD_COUNT_MAX,
+            )
+            length_prompt = (
+                "仅调整以下文章的字数到 {ARTICLE_WORD_COUNT_MIN}-{ARTICLE_WORD_COUNT_MAX} "
+                "字（当前 {final_count} 字），目标 {ARTICLE_WORD_COUNT_TARGET} 字。"
+                "不要改变事实、结构、观点和建议内容。只做增删。"
+                "直接输出调整后的 Markdown 正文，不要解释。"
+            ).format(
+                ARTICLE_WORD_COUNT_MIN=ARTICLE_WORD_COUNT_MIN,
+                ARTICLE_WORD_COUNT_MAX=ARTICLE_WORD_COUNT_MAX,
+                final_count=final_count,
+                ARTICLE_WORD_COUNT_TARGET=ARTICLE_WORD_COUNT_TARGET,
+            )
+            try:
+                length_fix = self.llm_client.chat_text(
+                    "",
+                    length_prompt + "\n\n文章:\n" + polished_article,
+                    request_tag="length_repair",
+                    temperature=0.1,
+                ).strip()
+                length_fix = clean_llm_article(length_fix)
+                if length_fix and count_text_chars(length_fix) >= ARTICLE_WORD_COUNT_MIN * 0.8:
+                    polished_article = length_fix
+                    logger.info(
+                        "Length repair done. cjk_chars=%d",
+                        count_text_chars(polished_article),
+                    )
+                else:
+                    warnings.append("Length repair produced empty or too-short result; keeping pre-repair version.")
+            except Exception as exc:
+                warnings.append(f"Length repair failed: {exc}; keeping pre-repair version.")
 
         # ── Title Pipeline (after content is finalized) ──
         logger.info("Generating title candidates")

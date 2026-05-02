@@ -6,6 +6,7 @@ from typing import List, Tuple
 from app_constants import DEFAULT_LONG_FORM_MAX_TOKENS
 from llm.prompts import FINAL_POLISH_PROMPT, SYSTEM_PROMPT
 from models.schemas import FactExtractResult
+from utils.text_utils import clean_llm_article
 
 
 class PolishAgent:
@@ -35,6 +36,7 @@ class PolishAgent:
             temperature=0.2,
             max_tokens=DEFAULT_LONG_FORM_MAX_TOKENS,
         ).strip()
+        text = clean_llm_article(text)
         warnings: List[str] = []
         if not text:
             warnings.append("Final polish returned empty content; fallback used.")

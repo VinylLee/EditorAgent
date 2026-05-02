@@ -6,6 +6,7 @@ from typing import List, Tuple
 from app_constants import DEFAULT_LONG_FORM_MAX_TOKENS
 from llm.prompts import ARTICLE_WRITE_PROMPT, SYSTEM_PROMPT
 from models.schemas import FactExtractResult, NewsItem
+from utils.text_utils import clean_llm_article
 
 
 class ArticleWriter:
@@ -44,12 +45,10 @@ class ArticleWriter:
             ARTICLE_WRITE_PROMPT
             + "\n\n新闻信息:\n"
             + news_json
-            + "\n\n事实抽取结果:\n"
+            + "\n\n事实抽取结果（唯一事实来源）:\n"
             + fact_json
             + "\n\n文章角度:\n"
             + (article_angle or "")
-            + "\n\n新闻素材:\n"
-            + (raw_text or "")
             + source_block
         )
         article = self.llm_client.chat_text(
@@ -58,6 +57,7 @@ class ArticleWriter:
             request_tag="article_write",
             max_tokens=DEFAULT_LONG_FORM_MAX_TOKENS,
         ).strip()
+        article = clean_llm_article(article)
         warnings: List[str] = []
         if not article:
             warnings.append("Article generation returned empty content.")

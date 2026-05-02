@@ -13,7 +13,7 @@ from llm.json_schemas import REVIEW_SCHEMA
 from llm.prompts import REVIEW_PROMPT, REWRITE_PROMPT, SYSTEM_PROMPT
 from models.schemas import FactExtractResult, ReviewResult, TitleRiskResult
 from utils.json_utils import safe_json_loads
-from utils.text_utils import count_text_chars
+from utils.text_utils import clean_llm_article, count_text_chars
 
 
 class ReviewAgent:
@@ -122,6 +122,7 @@ class ReviewAgent:
             request_tag="article_rewrite",
             max_tokens=DEFAULT_LONG_FORM_MAX_TOKENS,
         ).strip()
+        text = clean_llm_article(text)
         warnings: List[str] = []
         if not text:
             warnings.append("Article rewrite returned empty content; fallback used.")
