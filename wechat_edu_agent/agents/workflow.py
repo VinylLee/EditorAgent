@@ -15,7 +15,7 @@ from agents.review_agent import ReviewAgent
 from agents.title_optimizer import TitleOptimizer
 from agents.title_risk_agent import TitleRiskAgent
 from app_constants import MAX_REVIEW_ROUNDS, PLACEHOLDER_URL_MARKERS, REFERENCE_SECTION_HEADER
-from models.schemas import NewsItem, RunReport
+from models.schemas import NewsItem, RunReport, TitleRiskResult
 from search.base import SearchProvider
 from search.dedup import DedupResult, SearchHistory
 from utils.file_utils import create_run_dir, write_json, write_text
@@ -115,52 +115,21 @@ class Workflow:
             self._preview_text(article),
         )
 
-        logger.info("Generating title candidates")
-        titles, warning = self.title_optimizer.generate_titles(article)
-        warnings.extend(warning)
-        logger.info("Titles generated: %d", len(titles))
-        if titles:
-            preview_titles = ", ".join(t.title for t in titles[:3])
-            logger.info("Title preview: %s", preview_titles)
-
-        logger.info("Assessing title risks")
-        title_risk, warning = self.title_risk_agent.assess(
-            titles, article_markdown=article, fact_extract=fact_extract
-        )
-        warnings.extend(warning)
-        logger.info(
-            "Title risk done. safe=%d, risky=%d",
-            len(title_risk.safe_titles),
-            len(title_risk.risky_titles),
-        )
-
-        safe_title_set = set(title_risk.safe_titles)
-        safe_titles = [t for t in titles if t.title in safe_title_set]
-        if not safe_titles:
-            warnings.append("No safe titles found; fallback to all titles.")
-            safe_titles = titles
-
-        logger.info("Selecting final title")
-        selection, warning = self.title_optimizer.select_title(safe_titles, article)
-        warnings.extend(warning)
-        logger.info("Final title selected: %s", selection.final_title)
-
-        draft_article = self.formatter.apply_title(article, selection.final_title)
-        logger.info("Draft formatted with title")
-
+        # ── Review → Rewrite Loop (content only, no title yet) ──
         logger.info("Reviewing article quality")
-        reviewed_article = draft_article
+        reviewed_article = article
         auto_rewrite_performed = False
         review_round = 0
         review = None
+        empty_title_risk = TitleRiskResult()
 
         while True:
             review_round += 1
             review, warning = self.review_agent.review(
-                final_title=selection.final_title,
+                final_title="",
                 article_markdown=reviewed_article,
                 fact_extract=fact_extract,
-                title_risk=title_risk,
+                title_risk=empty_title_risk,
                 raw_text=search_result.raw_text,
             )
             warnings.extend(warning)
@@ -189,7 +158,7 @@ class Workflow:
 
             logger.info("Auto rewrite started (round %d)", review_round)
             rewritten, warning = self.review_agent.rewrite(
-                final_title=selection.final_title,
+                final_title="",
                 article_markdown=reviewed_article,
                 review=review,
                 fact_extract=fact_extract,
@@ -204,14 +173,47 @@ class Workflow:
                 self._preview_text(reviewed_article),
             )
 
+        # ── Polish ──
         logger.info("Final polish started")
         polished_article, warning = self.polish_agent.polish(
-            final_title=selection.final_title,
+            final_title="",
             article_markdown=reviewed_article,
             fact_extract=fact_extract,
         )
         warnings.extend(warning)
         polished_article = self._strip_fact_tags(polished_article)
+        logger.info("Polish done. cjk_chars=%d", count_text_chars(polished_article))
+
+        # ── Title Pipeline (after content is finalized) ──
+        logger.info("Generating title candidates")
+        titles, warning = self.title_optimizer.generate_titles(polished_article)
+        warnings.extend(warning)
+        logger.info("Titles generated: %d", len(titles))
+        if titles:
+            preview_titles = ", ".join(t.title for t in titles[:3])
+            logger.info("Title preview: %s", preview_titles)
+
+        logger.info("Assessing title risks")
+        title_risk, warning = self.title_risk_agent.assess(
+            titles, article_markdown=polished_article, fact_extract=fact_extract
+        )
+        warnings.extend(warning)
+        logger.info(
+            "Title risk done. safe=%d, risky=%d",
+            len(title_risk.safe_titles),
+            len(title_risk.risky_titles),
+        )
+
+        safe_title_set = set(title_risk.safe_titles)
+        safe_titles = [t for t in titles if t.title in safe_title_set]
+        if not safe_titles:
+            warnings.append("No safe titles found; fallback to all titles.")
+            safe_titles = titles
+
+        logger.info("Selecting final title")
+        selection, warning = self.title_optimizer.select_title(safe_titles, polished_article)
+        warnings.extend(warning)
+        logger.info("Final title selected: %s", selection.final_title)
 
         final_article = self.formatter.apply_title(polished_article, selection.final_title)
         final_article = self._append_source_url(final_article, search_result.items)
@@ -225,7 +227,7 @@ class Workflow:
         logger.info("Cover prompt ready. cover_text=%s", cover_prompt.cover_text)
 
         logger.info("Saving outputs")
-        write_text(run_dir / "article.md", draft_article)
+        write_text(run_dir / "article.md", reviewed_article)
         write_text(run_dir / "final_article.md", final_article)
         write_json(run_dir / "fact_extract.json", fact_extract.model_dump())
         write_json(run_dir / "title_risk.json", title_risk.model_dump())

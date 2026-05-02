@@ -83,8 +83,28 @@ class ReviewAgent:
         raw_text: str,
     ) -> Tuple[str, List[str]]:
         fact_json = json.dumps(fact_extract.model_dump(), ensure_ascii=False, indent=2)
+
+        # 字数诊断：计算当前字数并给出精确的删减/扩充方向
+        word_count = count_text_chars(article_markdown)
+        if word_count < ARTICLE_WORD_COUNT_MIN:
+            wc_diagnosis = (
+                f"当前文章实际 {word_count} 字，目标范围 {ARTICLE_WORD_COUNT_MIN}-{ARTICLE_WORD_COUNT_MAX} 字。"
+                f"需要扩充至少 {ARTICLE_WORD_COUNT_MIN - word_count} 字才能达到下限。"
+            )
+        elif word_count > ARTICLE_WORD_COUNT_MAX:
+            wc_diagnosis = (
+                f"当前文章实际 {word_count} 字，目标范围 {ARTICLE_WORD_COUNT_MIN}-{ARTICLE_WORD_COUNT_MAX} 字。"
+                f"需要删减至少 {word_count - ARTICLE_WORD_COUNT_MAX} 字才能达到上限。"
+            )
+        else:
+            wc_diagnosis = (
+                f"当前文章实际 {word_count} 字，已在目标范围 {ARTICLE_WORD_COUNT_MIN}-{ARTICLE_WORD_COUNT_MAX} 字内。"
+            )
+
         prompt = (
             REWRITE_PROMPT
+            + "\n\n字数诊断:\n"
+            + wc_diagnosis
             + "\n\n指定标题:\n"
             + final_title
             + "\n\n修正要求:\n"
@@ -177,9 +197,9 @@ class ReviewAgent:
             review.rewrite_required = True
             review.problems.append(f"字数不在 {ARTICLE_WORD_COUNT_MIN}-{ARTICLE_WORD_COUNT_REVIEW_MAX} 范围内（当前 {word_count} 字）")
             if word_count < ARTICLE_WORD_COUNT_MIN:
-                wc_hint = f"当前文章实际 {word_count} 字，比目标下限 {ARTICLE_WORD_COUNT_MIN} 字少 {ARTICLE_WORD_COUNT_MIN - word_count} 字，请在修正时充实内容。"
+                wc_hint = f"当前文章实际 {word_count} 字，目标范围 {ARTICLE_WORD_COUNT_MIN}-{ARTICLE_WORD_COUNT_MAX} 字，需要扩充至少 {ARTICLE_WORD_COUNT_MIN - word_count} 字。"
             else:
-                wc_hint = f"当前文章实际 {word_count} 字，超过目标上限 {ARTICLE_WORD_COUNT_MAX} 字，请在修正时精简内容。"
+                wc_hint = f"当前文章实际 {word_count} 字，目标范围 {ARTICLE_WORD_COUNT_MIN}-{ARTICLE_WORD_COUNT_MAX} 字，需要删减至少 {word_count - ARTICLE_WORD_COUNT_MAX} 字。"
             review.rewrite_instructions = (
                 (review.rewrite_instructions + "\n" if review.rewrite_instructions else "")
                 + wc_hint
