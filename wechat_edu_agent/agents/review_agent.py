@@ -13,7 +13,7 @@ from llm.json_schemas import REVIEW_SCHEMA
 from llm.prompts import REVIEW_PROMPT, REWRITE_PROMPT, SYSTEM_PROMPT
 from models.schemas import FactExtractResult, ReviewResult, TitleRiskResult
 from utils.json_utils import safe_json_loads
-from utils.text_utils import count_cjk_chars
+from utils.text_utils import count_text_chars
 
 
 class ReviewAgent:
@@ -140,7 +140,7 @@ class ReviewAgent:
     def _fallback(
         self, article_markdown: str, title_risk: TitleRiskResult
     ) -> ReviewResult:
-        word_count = count_cjk_chars(article_markdown)
+        word_count = count_text_chars(article_markdown)
         problems: List[str] = ["Review JSON parse failed"]
         rewrite_required = False
 
@@ -172,7 +172,7 @@ class ReviewAgent:
         article_markdown: str,
         title_risk: TitleRiskResult,
     ) -> ReviewResult:
-        word_count = count_cjk_chars(article_markdown)
+        word_count = count_text_chars(article_markdown)
         if word_count < ARTICLE_WORD_COUNT_MIN or word_count > ARTICLE_WORD_COUNT_REVIEW_MAX:
             review.rewrite_required = True
             review.problems.append(f"字数不在 {ARTICLE_WORD_COUNT_MIN}-{ARTICLE_WORD_COUNT_REVIEW_MAX} 范围内（当前 {word_count} 字）")

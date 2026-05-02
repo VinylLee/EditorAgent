@@ -246,10 +246,9 @@ class SearchHistory:
         item_text = self._build_semantic_text(item)
         item_vector, _item_embedding_error = self._safe_embed_text(item_text)
 
-        comparison_records = [*self.records]
-        comparison_records.extend(current_batch)
-
-        for record in comparison_records:
+        # Stage 1 & 2: Exact URL / title match against ALL records (history + current batch)
+        all_records = [*self.records, *current_batch]
+        for record in all_records:
             if item_url_key and record.url_key and item_url_key == record.url_key:
                 return DedupDecision(
                     title=item_title,
@@ -261,8 +260,6 @@ class SearchHistory:
                     matched_source=record.source,
                     matched_url=record.url,
                 )
-
-        for record in comparison_records:
             if item_title_key and record.title_key and item_title_key == record.title_key:
                 return DedupDecision(
                     title=item_title,
@@ -275,7 +272,9 @@ class SearchHistory:
                     matched_url=record.url,
                 )
 
-        for record in comparison_records:
+        # Stage 3: Title similarity against HISTORY only
+        # (Within the same batch, similar news items are allowed through)
+        for record in self.records:
             title_similarity = title_similarity_score(item_title, record.title)
             if title_similarity >= self.title_threshold:
                 return DedupDecision(
@@ -290,10 +289,11 @@ class SearchHistory:
                     title_similarity=title_similarity,
                 )
 
+        # Stage 4: Semantic similarity against HISTORY only
         if item_vector:
             best_score = 0.0
             best_record: HistoryRecord | None = None
-            for record in comparison_records:
+            for record in self.records:
                 if not record.vector:
                     continue
                 score = cosine_similarity(item_vector, record.vector)

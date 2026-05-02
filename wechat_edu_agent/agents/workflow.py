@@ -20,7 +20,7 @@ from search.base import SearchProvider
 from search.dedup import DedupResult, SearchHistory
 from utils.file_utils import create_run_dir, write_json, write_text
 from utils.logger import get_logger
-from utils.text_utils import count_cjk_chars
+from utils.text_utils import count_text_chars
 
 
 class Workflow:
@@ -111,7 +111,7 @@ class Workflow:
         warnings.extend(warning)
         logger.info(
             "Article draft ready. cjk_chars=%d, preview=%s",
-            count_cjk_chars(article),
+            count_text_chars(article),
             self._preview_text(article),
         )
 
@@ -200,7 +200,7 @@ class Workflow:
             auto_rewrite_performed = True
             logger.info(
                 "Auto rewrite done. cjk_chars=%d, preview=%s",
-                count_cjk_chars(reviewed_article),
+                count_text_chars(reviewed_article),
                 self._preview_text(reviewed_article),
             )
 
@@ -239,7 +239,7 @@ class Workflow:
         )
         write_text(run_dir / "cover_prompt.md", cover_prompt.to_markdown())
 
-        word_count = count_cjk_chars(final_article)
+        word_count = count_text_chars(final_article)
         human_check_required = review.human_check_required
         report = RunReport(
             run_id=datetime.now().strftime("%Y%m%d_%H%M%S"),

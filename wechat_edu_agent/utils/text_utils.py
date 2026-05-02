@@ -11,5 +11,6 @@ def slugify(text: str, fallback: str = "manual") -> str:
     return text or fallback
 
 
-def count_cjk_chars(text: str) -> int:
-    return len(re.findall(r"[\u4e00-\u9fff]", text or ""))
+def count_text_chars(text: str) -> int:
+    """Count all non-whitespace characters (standard Chinese \u5b57\u6570\u7edf\u8ba1)."""
+    return len(re.sub(r"\s", "", text or ""))
