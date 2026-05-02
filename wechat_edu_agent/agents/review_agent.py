@@ -146,7 +146,7 @@ class ReviewAgent:
 
         if word_count < ARTICLE_WORD_COUNT_MIN or word_count > ARTICLE_WORD_COUNT_MAX:
             rewrite_required = True
-            problems.append("字数不在 1200-1800 范围内")
+            problems.append(f"字数不在 {ARTICLE_WORD_COUNT_MIN}-{ARTICLE_WORD_COUNT_MAX} 范围内（当前 {word_count} 字）")
 
         if self._markdown_abnormal(article_markdown):
             rewrite_required = True
@@ -162,7 +162,7 @@ class ReviewAgent:
             hallucination_risks=[],
             unsupported_claims=[],
             title_risks=high_risk_titles,
-            rewrite_instructions="请按事实抽取结果修正文章，并保证字数在 1200-1800。",
+            rewrite_instructions=f"当前文章实际 {word_count} 字，目标范围 {ARTICLE_WORD_COUNT_MIN}-{ARTICLE_WORD_COUNT_MAX} 字。请按事实抽取结果修正文章，并根据需要增删内容。",
             human_check_required=True,
         )
 
@@ -175,7 +175,15 @@ class ReviewAgent:
         word_count = count_cjk_chars(article_markdown)
         if word_count < ARTICLE_WORD_COUNT_MIN or word_count > ARTICLE_WORD_COUNT_REVIEW_MAX:
             review.rewrite_required = True
-            review.problems.append("字数不在 1200-1900 范围内")
+            review.problems.append(f"字数不在 {ARTICLE_WORD_COUNT_MIN}-{ARTICLE_WORD_COUNT_REVIEW_MAX} 范围内（当前 {word_count} 字）")
+            if word_count < ARTICLE_WORD_COUNT_MIN:
+                wc_hint = f"当前文章实际 {word_count} 字，比目标下限 {ARTICLE_WORD_COUNT_MIN} 字少 {ARTICLE_WORD_COUNT_MIN - word_count} 字，请在修正时充实内容。"
+            else:
+                wc_hint = f"当前文章实际 {word_count} 字，超过目标上限 {ARTICLE_WORD_COUNT_MAX} 字，请在修正时精简内容。"
+            review.rewrite_instructions = (
+                (review.rewrite_instructions + "\n" if review.rewrite_instructions else "")
+                + wc_hint
+            )
 
         if self._markdown_abnormal(article_markdown):
             review.rewrite_required = True
@@ -210,8 +218,7 @@ class ReviewAgent:
         )
         if review.rewrite_required and not review.rewrite_instructions:
             review.rewrite_instructions = (
-                "请依据事实抽取结果修正文章，删除无法验证的具体事实和数字，"
-                "并保证字数在 1200-1800。"
+                "请依据事实抽取结果修正文章，删除无法验证的具体事实和数字。"
             )
         return review
 
