@@ -219,12 +219,12 @@ class Workflow:
         final_article = self._append_source_url(final_article, search_result.items)
         logger.info("Final article formatted")
 
-        logger.info("Generating cover prompt")
-        cover_prompt, warning = self.cover_prompt_generator.generate(
-            selection.final_title, final_article
-        )
-        warnings.extend(warning)
-        logger.info("Cover prompt ready. cover_text=%s", cover_prompt.cover_text)
+        # logger.info("Generating cover prompt")
+        # cover_prompt, warning = self.cover_prompt_generator.generate(
+        #     selection.final_title, final_article
+        # )
+        # warnings.extend(warning)
+        # logger.info("Cover prompt ready. cover_text=%s", cover_prompt.cover_text)
 
         logger.info("Saving outputs")
         write_text(run_dir / "article.md", reviewed_article)
@@ -239,7 +239,7 @@ class Workflow:
                 "final": selection.model_dump(),
             },
         )
-        write_text(run_dir / "cover_prompt.md", cover_prompt.to_markdown())
+        # write_text(run_dir / "cover_prompt.md", cover_prompt.to_markdown())
 
         word_count = count_text_chars(final_article)
         human_check_required = review.human_check_required
