@@ -84,7 +84,7 @@ class Workflow:
             logger.info("Search result saved to %s", run_dir / "search_result.json")
 
             if self.news_deduplicator:
-                dedup_result = self.news_deduplicator.filter_items(search_result.items, limit=5)
+                dedup_result = self.news_deduplicator.filter_items(search_result.items, limit=5, topic=topic, news_type=news_type)
                 if dedup_result.warnings:
                     warnings.extend(dedup_result.warnings)
                 write_json(run_dir / "search_dedup.json", dedup_result.to_dict())

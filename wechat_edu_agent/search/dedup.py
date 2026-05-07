@@ -25,6 +25,8 @@ class HistoryRecord:
     content_hash: str
     title_key: str
     url_key: str
+    topic: str = ""
+    news_type: str = ""
     vector: list[float] | None = None
     embedding_error: str | None = None
 
@@ -46,6 +48,8 @@ class HistoryRecord:
             content_hash=str(data.get("content_hash", "")),
             title_key=str(data.get("title_key", "")),
             url_key=str(data.get("url_key", "")),
+            topic=str(data.get("topic", "")),
+            news_type=str(data.get("news_type", "")),
             vector=vector,
             embedding_error=embedding_error,
         )
@@ -61,6 +65,8 @@ class HistoryRecord:
             "content_hash": self.content_hash,
             "title_key": self.title_key,
             "url_key": self.url_key,
+            "topic": self.topic,
+            "news_type": self.news_type,
         }
         if self.vector is not None:
             payload["vector"] = self.vector
@@ -142,7 +148,8 @@ class SearchHistory:
     def embedding_enabled(self) -> bool:
         return bool(self.llm_client and self.embedding_model)
 
-    def filter_items(self, items: Sequence[NewsItem], limit: int | None = None) -> DedupResult:
+    def filter_items(self, items: Sequence[NewsItem], limit: int | None = None,
+                     topic: str = "", news_type: str = "") -> DedupResult:
         warnings: list[str] = []
         kept_items: list[NewsItem] = []
         kept_records: list[HistoryRecord] = []
@@ -161,7 +168,7 @@ class SearchHistory:
             if decision.duplicate:
                 dropped_items.append(decision)
                 continue
-            kept_records.append(self._build_record(item))
+            kept_records.append(self._build_record(item, topic=topic, news_type=news_type))
             kept_items.append(item)
 
         if kept_records:
@@ -184,8 +191,8 @@ class SearchHistory:
     def is_duplicate(self, news_item: NewsItem) -> bool:
         return self._classify_item(news_item, []).duplicate
 
-    def record_items(self, items: Sequence[NewsItem]) -> int:
-        return self._append_records([self._build_record(item) for item in items])
+    def record_items(self, items: Sequence[NewsItem], topic: str = "", news_type: str = "") -> int:
+        return self._append_records([self._build_record(item, topic=topic, news_type=news_type) for item in items])
 
     def _load_records(self) -> list[HistoryRecord]:
         if not self.history_path.exists():
@@ -216,7 +223,7 @@ class SearchHistory:
         self.records.extend(records)
         return len(records)
 
-    def _build_record(self, item: NewsItem) -> HistoryRecord:
+    def _build_record(self, item: NewsItem, topic: str = "", news_type: str = "") -> HistoryRecord:
         semantic_text = self._build_semantic_text(item)
         vector: list[float] = []
         embedding_error: str | None = None
@@ -233,6 +240,8 @@ class SearchHistory:
             content_hash=self._hash_text(semantic_text),
             title_key=normalize_title(item.title),
             url_key=normalize_url(item.url),
+            topic=topic,
+            news_type=news_type,
             vector=vector or None,
             embedding_error=embedding_error,
         )
