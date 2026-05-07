@@ -51,37 +51,66 @@ class Workflow:
         self.llm_client.set_trace_path(run_dir / "llm_trace.jsonl")
         logger.info("Run started. Output dir: %s", run_dir)
 
-        logger.info("Searching news. topic=%s, news_type=%s", topic, news_type)
-        search_result = provider.search(topic=topic, news_type=news_type, limit=5)
-        if not search_result.items:
-            raise ValueError("No news items found from provider.")
-        logger.info(
-            "Search done. provider=%s, items=%d",
-            search_result.provider,
-            len(search_result.items),
-        )
-
-        write_json(run_dir / "search_result.json", search_result.model_dump())
-        logger.info("Search result saved to %s", run_dir / "search_result.json")
-
+        # Search + dedup with retry: when dedup drops everything, retry with
+        # date-modified topic to find different (older) news.
+        MAX_DEDUP_RETRIES = 4
+        # Months to go back on each retry: 1, 2, 3, 6 months
+        date_offsets = [1, 2, 3, 6]
         dedup_result: DedupResult | None = None
-        if self.news_deduplicator:
-            dedup_result = self.news_deduplicator.filter_items(search_result.items, limit=5)
-            if dedup_result.warnings:
-                warnings.extend(dedup_result.warnings)
-            write_json(run_dir / "search_dedup.json", dedup_result.to_dict())
-            logger.info(
-                "Dedup done. kept=%d, dropped=%d, history=%d",
-                len(dedup_result.kept_items),
-                len(dedup_result.dropped_items),
-                dedup_result.history_size,
-            )
-            if not dedup_result.kept_items:
-                raise ValueError(
-                    "All candidate news were filtered by semantic deduplication. Try another topic or clear outputs/search_history.jsonl."
+
+        for attempt in range(MAX_DEDUP_RETRIES + 1):
+            current_topic = topic
+            if attempt > 0:
+                offset = date_offsets[attempt - 1]
+                total = datetime.now().year * 12 + datetime.now().month - 1 - offset
+                y, m = divmod(total, 12)
+                m += 1
+                current_topic = f"{topic} {y}年{m}月"
+                logger.info(
+                    "Retry %d: searching with date-modified topic=%s",
+                    attempt, current_topic,
                 )
-            search_result = search_result.model_copy(update={"items": dedup_result.kept_items})
-            write_json(run_dir / "search_result.filtered.json", search_result.model_dump())
+
+            logger.info("Searching news. topic=%s, news_type=%s", current_topic, news_type)
+            search_result = provider.search(topic=current_topic, news_type=news_type, limit=5)
+            if not search_result.items:
+                raise ValueError("No news items found from provider.")
+            logger.info(
+                "Search done. provider=%s, items=%d",
+                search_result.provider,
+                len(search_result.items),
+            )
+            write_json(run_dir / "search_result.json", search_result.model_dump())
+            logger.info("Search result saved to %s", run_dir / "search_result.json")
+
+            if self.news_deduplicator:
+                dedup_result = self.news_deduplicator.filter_items(search_result.items, limit=5)
+                if dedup_result.warnings:
+                    warnings.extend(dedup_result.warnings)
+                write_json(run_dir / "search_dedup.json", dedup_result.to_dict())
+                logger.info(
+                    "Dedup done. kept=%d, dropped=%d, history=%d",
+                    len(dedup_result.kept_items),
+                    len(dedup_result.dropped_items),
+                    dedup_result.history_size,
+                )
+                if dedup_result.kept_items:
+                    search_result = search_result.model_copy(update={"items": dedup_result.kept_items})
+                    write_json(run_dir / "search_result.filtered.json", search_result.model_dump())
+                    break
+
+                logger.info(
+                    "All %d results were duplicates on attempt %d. Retrying with older date...",
+                    len(search_result.items), attempt,
+                )
+            else:
+                break
+        else:
+            # Only reach here if all retries exhausted without break
+            raise ValueError(
+                "All candidate news were filtered by semantic deduplication after retrying with different dates. "
+                "Try another topic or clear outputs/search_history.jsonl."
+            )
 
         logger.info("Selecting news from %d candidates", len(search_result.items))
         selection_result, warning = self.news_selector.select(search_result.items)

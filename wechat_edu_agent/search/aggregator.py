@@ -55,6 +55,37 @@ class SearchAggregator:
         merged_items = self._merge_and_dedup(all_items, limit)
         merged_text = "\n\n---\n\n".join(raw_texts)
 
+        # 如果去重后可用结果不足（说明重复较多），进行一次放宽条件的重试：
+        # - 临时放宽时间窗口（self.max_age_days 增大）
+        # - 增加每个 provider 的 limit
+        # 仅重试一次以避免无限循环或过多请求
+        if len(merged_items) < limit and len(all_items) > len(merged_items):
+            old_max_age = self.max_age_days
+            try:
+                # 放宽时间窗口（最多扩展到 365 天）
+                self.max_age_days = min(self.max_age_days + 30, 365)
+                extra_limit = min(limit * 3, 15)
+
+                extra_items: List[NewsItem] = []
+                # 再次向每个 provider 请求更多结果
+                for provider in self.providers:
+                    provider_name = provider.__class__.__name__
+                    try:
+                        result = provider.search(topic=topic, news_type=news_type, limit=extra_limit)
+                        if result.items:
+                            extra_items.extend(result.items)
+                            raw_texts.append(result.raw_text)
+                    except Exception as exc:  # 保持原有错误收集逻辑
+                        errors.append(f"{provider_name}: {exc}")
+
+                if extra_items:
+                    all_items.extend(extra_items)
+                    merged_items = self._merge_and_dedup(all_items, limit)
+                    merged_text = "\n\n---\n\n".join(raw_texts)
+            finally:
+                # 恢复原始配置
+                self.max_age_days = old_max_age
+
         return SearchResult(
             items=merged_items,
             raw_text=merged_text,
