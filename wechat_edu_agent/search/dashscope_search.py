@@ -20,7 +20,7 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency
     Generation = None
     GenerationResponse = object
 
-from app_constants import DASHSCOPE_SEARCH_MODEL, PLACEHOLDER_URL_MARKERS
+from app_constants import PLACEHOLDER_URL_MARKERS
 from models.schemas import NewsItem, SearchResult
 from search.base import SearchProvider
 from llm.prompts import SEARCH_SYSTEM_PROMPT
@@ -42,7 +42,7 @@ class DashScopeSearchProvider(SearchProvider):
         # Initialize DashScope SDK once; request-time behavior remains unchanged.
         dashscope.api_key = api_key
         self.api_key = api_key
-        self.model = model or DASHSCOPE_SEARCH_MODEL
+        self.model = model or "qwen-plus"
         # Keep URL lookup fallback for cases where provider omits URLs.
         self.enable_url_lookup = enable_url_lookup
 

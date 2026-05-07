@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 import os
 
 from app_constants import (
-    DEFAULT_JSON_MODE,
     DEFAULT_DEDUP_RECENT_DAYS,
     DEFAULT_DEDUP_SIMILARITY_THRESHOLD,
     DEFAULT_DEDUP_TITLE_THRESHOLD,
-    DEFAULT_EMBEDDING_MODEL,
     DEFAULT_ENABLE_SEMANTIC_DEDUP,
+    DEFAULT_JSON_MODE,
     DEFAULT_LLM_API_KEY,
     DEFAULT_LLM_BASE_URL,
     DEFAULT_LLM_MODEL,
@@ -36,6 +36,7 @@ class AppConfig:
     # Search provider config
     search_provider: str = DEFAULT_SEARCH_PROVIDER
     dashscope_api_key: str = ""
+    dashscope_search_model: str = "qwen-plus"
     tavily_api_key: str = ""
     semantic_dedup_enabled: bool = DEFAULT_ENABLE_SEMANTIC_DEDUP
     dedup_similarity_threshold: float = DEFAULT_DEDUP_SIMILARITY_THRESHOLD
@@ -51,8 +52,8 @@ def _read_bool_env(name: str, default: bool) -> bool:
 
 
 def load_config() -> AppConfig:
-    # Load environment variables first, then apply centralized defaults.
-    load_dotenv()
+    # Load .env from the same directory as this file
+    load_dotenv(Path(__file__).parent / ".env")
 
     llm_base_url = (
         os.getenv("LLM_BASE_URL")
@@ -74,13 +75,14 @@ def load_config() -> AppConfig:
     )
     embedding_base_url = os.getenv("EMBEDDING_BASE_URL") or llm_base_url
     embedding_api_key = os.getenv("EMBEDDING_API_KEY") or llm_api_key
-    embedding_model = os.getenv("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
+    embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
     output_dir = os.getenv("OUTPUT_DIR", DEFAULT_OUTPUT_DIR)
     temperature = float(os.getenv("LLM_TEMPERATURE", str(DEFAULT_TEMPERATURE)))
     max_tokens = int(os.getenv("LLM_MAX_TOKENS", str(DEFAULT_MAX_TOKENS)))
     json_mode = os.getenv("LLM_JSON_MODE", DEFAULT_JSON_MODE).strip().lower()
     search_provider = os.getenv("SEARCH_PROVIDER", DEFAULT_SEARCH_PROVIDER).strip().lower()
     dashscope_api_key = os.getenv("DASHSCOPE_API_KEY", "")
+    dashscope_search_model = os.getenv("DASHSCOPE_SEARCH_MODEL", "qwen-plus")
     tavily_api_key = os.getenv("TAVILY_API_KEY", "")
     semantic_dedup_enabled = _read_bool_env("ENABLE_SEMANTIC_DEDUP", DEFAULT_ENABLE_SEMANTIC_DEDUP)
     dedup_similarity_threshold = float(
@@ -104,6 +106,7 @@ def load_config() -> AppConfig:
         json_mode=json_mode,
         search_provider=search_provider,
         dashscope_api_key=dashscope_api_key,
+        dashscope_search_model=dashscope_search_model,
         tavily_api_key=tavily_api_key,
         semantic_dedup_enabled=semantic_dedup_enabled,
         dedup_similarity_threshold=dedup_similarity_threshold,

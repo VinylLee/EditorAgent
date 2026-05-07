@@ -37,8 +37,11 @@ def build_provider(
             message = "DASHSCOPE_API_KEY not set in .env"
             logger.error(message)
             raise RuntimeError(message)
-        logger.info("Using DashScope search provider")
-        return DashScopeSearchProvider(api_key=config.dashscope_api_key)
+        logger.info("Using DashScope search provider (model=%s)", config.dashscope_search_model)
+        return DashScopeSearchProvider(
+            api_key=config.dashscope_api_key,
+            model=config.dashscope_search_model,
+        )
 
     if provider_name == "tavily":
         if not config.tavily_api_key:
@@ -51,7 +54,10 @@ def build_provider(
     if provider_name == "auto":
         providers: list[SearchProvider] = []
         if config.dashscope_api_key:
-            providers.append(DashScopeSearchProvider(api_key=config.dashscope_api_key))
+            providers.append(DashScopeSearchProvider(
+                api_key=config.dashscope_api_key,
+                model=config.dashscope_search_model,
+            ))
         if config.tavily_api_key:
             providers.append(TavilySearchProvider(api_key=config.tavily_api_key))
         if not providers:
