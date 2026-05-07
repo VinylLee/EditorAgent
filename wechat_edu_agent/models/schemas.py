@@ -12,6 +12,7 @@ class NewsItem(BaseModel):
     published_at: str
     url: str
     summary: str
+    original_text: str = ""
     core_facts: List[str] = Field(default_factory=list)
     parent_emotion_points: List[str] = Field(default_factory=list)
     relevance_score: int = 0

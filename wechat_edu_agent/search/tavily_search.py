@@ -87,6 +87,7 @@ class TavilySearchProvider(SearchProvider):
                 published_at=self._guess_date(content_clean),
                 url=url,
                 summary=content_clean[:300],
+                original_text=content_clean,
                 core_facts=core_facts,
                 parent_emotion_points=["教育焦虑", "升学压力"],
                 relevance_score=relevance,

@@ -221,8 +221,9 @@ class DashScopeSearchProvider(SearchProvider):
                 title=title,
                 source=source,
                 published_at=published_at,
-                url=url,  # 🔑 此时 url 应已填充
+                url=url,
                 summary=summary,
+                original_text=body,
                 core_facts=core_facts,
                 parent_emotion_points=["教育焦虑", "升学压力"],
                 relevance_score=70,
@@ -260,6 +261,7 @@ class DashScopeSearchProvider(SearchProvider):
                 published_at=datetime.now().strftime("%Y-%m-%d"),
                 url=url,
                 summary=summary,
+                original_text=raw_text,
                 core_facts=core_facts,
                 parent_emotion_points=["教育焦虑"],
                 relevance_score=60,

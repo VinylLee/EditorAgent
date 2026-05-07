@@ -21,6 +21,7 @@ class HistoryRecord:
     url: str
     published_at: str
     searched_at: str
+    original_text: str = ""
     semantic_text: str
     content_hash: str
     title_key: str
@@ -44,6 +45,7 @@ class HistoryRecord:
             url=str(data.get("url", "")),
             published_at=str(data.get("published_at", "")),
             searched_at=str(data.get("searched_at", "")),
+            original_text=str(data.get("original_text", "")),
             semantic_text=str(data.get("semantic_text", "")),
             content_hash=str(data.get("content_hash", "")),
             title_key=str(data.get("title_key", "")),
@@ -61,6 +63,7 @@ class HistoryRecord:
             "url": self.url,
             "published_at": self.published_at,
             "searched_at": self.searched_at,
+            "original_text": self.original_text,
             "semantic_text": self.semantic_text,
             "content_hash": self.content_hash,
             "title_key": self.title_key,
@@ -236,6 +239,7 @@ class SearchHistory:
             url=item.url.strip(),
             published_at=item.published_at.strip(),
             searched_at=datetime.now().isoformat(timespec="seconds"),
+            original_text=item.original_text.strip(),
             semantic_text=semantic_text,
             content_hash=self._hash_text(semantic_text),
             title_key=normalize_title(item.title),

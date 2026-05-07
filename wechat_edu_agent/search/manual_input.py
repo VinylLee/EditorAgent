@@ -29,6 +29,7 @@ class ManualNewsProvider(SearchProvider):
             published_at="未知",
             url="manual://",
             summary=summary,
+            original_text=raw_text,
             core_facts=core_facts,
             parent_emotion_points=["担心孩子被甩开", "担心政策变化影响规划"],
             relevance_score=60,
