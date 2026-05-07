@@ -48,7 +48,13 @@ outputs/                   # 运行输出（按时间戳分目录）
 - **Python 3.11+**
 - **LLM API**：任意 OpenAI-compatible 接口（已测试：DeepSeek、DashScope）
 - **搜索 API（可选）**：DashScope API Key（联网搜索）/ Tavily API Key（搜索 API）
-- 依赖包：`openai`、`python-dotenv`、`pydantic`（Tavily 需额外安装 `requests`）
+- 依赖包：请使用仓库中的 `wechat_edu_agent/requirements.txt` 统一管理依赖，安装命令：
+
+```bash
+pip install -r wechat_edu_agent/requirements.txt
+```
+
+该 `requirements.txt` 包含 `openai`、`python-dotenv`、`pydantic`，如果使用 Tavily 请额外安装 `requests`。
 
 ## 快速开始
 
@@ -57,7 +63,7 @@ outputs/                   # 运行输出（按时间戳分目录）
 ```bash
 conda create -n agent311 python=3.11
 conda activate agent311
-pip install openai python-dotenv pydantic
+pip install -r wechat_edu_agent/requirements.txt
 ```
 
 ### 2. 配置 .env

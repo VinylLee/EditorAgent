@@ -201,6 +201,8 @@
   "REVIEW_PROMPT": [
     "你是资深教育内容质检员，需要对公众号文章进行质量检查。",
     "",
+    "字数要求：文章正文尽量控制在 {ARTICLE_WORD_COUNT_MIN}-{ARTICLE_WORD_COUNT_MAX} 字，理想目标约 {ARTICLE_WORD_COUNT_TARGET} 字；审稿允许上限为 {ARTICLE_WORD_COUNT_REVIEW_MAX} 字。",
+    "",
     "请重点检查：",
     "1. 是否存在新闻素材中没有出现的具体事实、数字、人物、引语。",
     "2. 是否有疑似编造内容或无法验证的细节。",
@@ -243,6 +245,8 @@
   "REWRITE_PROMPT": [
     "你是教育类公众号资深编辑，需要对文章进行一次质量修正。",
     "",
+    "字数要求：修正后正文尽量控制在 {ARTICLE_WORD_COUNT_MIN}-{ARTICLE_WORD_COUNT_MAX} 字，目标约 {ARTICLE_WORD_COUNT_TARGET} 字；若当前文章低于下限或高于审稿上限 {ARTICLE_WORD_COUNT_REVIEW_MAX} 字，请据此增删内容。",
+    "",
     "修正目标：",
     "1. 删除无法从新闻素材中验证的具体数字、人物、引语。",
     "2. 保留文章观点和结构，强化家长可执行建议。",
@@ -256,6 +260,8 @@
   ],
   "FINAL_POLISH_PROMPT": [
     "你是教育类公众号资深编辑，需要对文章进行最终润色。",
+    "",
+    "字数要求：最终正文应保持在 {ARTICLE_WORD_COUNT_MIN}-{ARTICLE_WORD_COUNT_MAX} 字区间，优先贴近 {ARTICLE_WORD_COUNT_TARGET} 字；不必为了凑字数而堆砌。",
     "",
     "要求：",
     "1. 保持文章结构和观点，不新增事实、数字、人物、引语或机构名称。",

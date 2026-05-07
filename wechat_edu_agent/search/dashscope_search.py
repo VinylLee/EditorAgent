@@ -11,9 +11,14 @@ import re
 from datetime import datetime
 from typing import List, Dict, Any
 
-import dashscope
-from dashscope import Generation
-from dashscope.api_entities.dashscope_response import GenerationResponse
+try:
+    import dashscope
+    from dashscope import Generation
+    from dashscope.api_entities.dashscope_response import GenerationResponse
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    dashscope = None
+    Generation = None
+    GenerationResponse = object
 
 from app_constants import DASHSCOPE_SEARCH_MODEL, PLACEHOLDER_URL_MARKERS
 from models.schemas import NewsItem, SearchResult
@@ -27,6 +32,10 @@ class DashScopeSearchProvider(SearchProvider):
     def __init__(
         self, api_key: str, model: str | None = None, enable_url_lookup: bool = True
     ) -> None:
+        if dashscope is None or Generation is None:
+            raise ModuleNotFoundError(
+                "dashscope is not installed; install the dashscope package to use DashScopeSearchProvider"
+            )
         if not api_key:
             raise ValueError("DASHSCOPE_API_KEY is required for DashScope search")
 

@@ -21,10 +21,14 @@ def create_run_dir(base_dir: str, keyword: str) -> Path:
 
 
 def write_text(path: Path, content: str) -> None:
-    Path(path).write_text(content, encoding="utf-8")
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
 
 
 def write_json(path: Path, data: Any) -> None:
-    Path(path).write_text(
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
         json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
     )
