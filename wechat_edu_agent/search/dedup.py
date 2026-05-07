@@ -21,11 +21,11 @@ class HistoryRecord:
     url: str
     published_at: str
     searched_at: str
-    original_text: str = ""
     semantic_text: str
     content_hash: str
     title_key: str
     url_key: str
+    original_text: str = ""
     topic: str = ""
     news_type: str = ""
     vector: list[float] | None = None

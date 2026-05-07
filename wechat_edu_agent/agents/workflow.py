@@ -14,7 +14,11 @@ from agents.polish_agent import PolishAgent
 from agents.review_agent import ReviewAgent
 from agents.title_optimizer import TitleOptimizer
 from agents.title_risk_agent import TitleRiskAgent
-from app_constants import MAX_REVIEW_ROUNDS, PLACEHOLDER_URL_MARKERS, REFERENCE_SECTION_HEADER
+from app_constants import (
+    MAX_REVIEW_ROUNDS,
+    PLACEHOLDER_URL_MARKERS,
+    REFERENCE_SECTION_HEADER,
+)
 from models.schemas import NewsItem, RunReport, TitleRiskResult
 from search.base import SearchProvider
 from search.dedup import DedupResult, SearchHistory
@@ -53,12 +57,11 @@ class Workflow:
 
         # Search + dedup with retry: when dedup drops everything, retry with
         # date-modified topic to find different (older) news.
-        MAX_DEDUP_RETRIES = 4
-        # Months to go back on each retry: 1, 2, 3, 6 months
-        date_offsets = [1, 2, 3, 6]
+        # Months to go back on each retry: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
+        date_offsets = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
         dedup_result: DedupResult | None = None
 
-        for attempt in range(MAX_DEDUP_RETRIES + 1):
+        for attempt in range(len(date_offsets) + 1):
             current_topic = topic
             if attempt > 0:
                 offset = date_offsets[attempt - 1]
@@ -68,11 +71,16 @@ class Workflow:
                 current_topic = f"{topic} {y}年{m}月"
                 logger.info(
                     "Retry %d: searching with date-modified topic=%s",
-                    attempt, current_topic,
+                    attempt,
+                    current_topic,
                 )
 
-            logger.info("Searching news. topic=%s, news_type=%s", current_topic, news_type)
-            search_result = provider.search(topic=current_topic, news_type=news_type, limit=5)
+            logger.info(
+                "Searching news. topic=%s, news_type=%s", current_topic, news_type
+            )
+            search_result = provider.search(
+                topic=current_topic, news_type=news_type, limit=5
+            )
             if not search_result.items:
                 raise ValueError("No news items found from provider.")
             logger.info(
@@ -84,7 +92,9 @@ class Workflow:
             logger.info("Search result saved to %s", run_dir / "search_result.json")
 
             if self.news_deduplicator:
-                dedup_result = self.news_deduplicator.filter_items(search_result.items, limit=5, topic=topic, news_type=news_type)
+                dedup_result = self.news_deduplicator.filter_items(
+                    search_result.items, limit=5, topic=topic, news_type=news_type
+                )
                 if dedup_result.warnings:
                     warnings.extend(dedup_result.warnings)
                 write_json(run_dir / "search_dedup.json", dedup_result.to_dict())
@@ -95,13 +105,19 @@ class Workflow:
                     dedup_result.history_size,
                 )
                 if dedup_result.kept_items:
-                    search_result = search_result.model_copy(update={"items": dedup_result.kept_items})
-                    write_json(run_dir / "search_result.filtered.json", search_result.model_dump())
+                    search_result = search_result.model_copy(
+                        update={"items": dedup_result.kept_items}
+                    )
+                    write_json(
+                        run_dir / "search_result.filtered.json",
+                        search_result.model_dump(),
+                    )
                     break
 
                 logger.info(
                     "All %d results were duplicates on attempt %d. Retrying with older date...",
-                    len(search_result.items), attempt,
+                    len(search_result.items),
+                    attempt,
                 )
             else:
                 break
@@ -239,12 +255,16 @@ class Workflow:
             safe_titles = titles
 
         logger.info("Selecting final title")
-        selection, warning = self.title_optimizer.select_title(safe_titles, polished_article)
+        selection, warning = self.title_optimizer.select_title(
+            safe_titles, polished_article
+        )
         warnings.extend(warning)
         logger.info("Final title selected: %s", selection.final_title)
 
         # Apply selected title to final article and regenerate cover prompt
-        final_article = self.formatter.apply_title(polished_article, selection.final_title)
+        final_article = self.formatter.apply_title(
+            polished_article, selection.final_title
+        )
         final_article = self._append_source_url(final_article, search_result.items)
         logger.info("Final article formatted with title")
 
@@ -297,10 +317,14 @@ class Workflow:
             dedup_removed_count=len(dedup_result.dropped_items) if dedup_result else 0,
             dedup_history_size=dedup_result.history_size if dedup_result else 0,
             dedup_similarity_threshold=(
-                self.news_deduplicator.similarity_threshold if self.news_deduplicator else 0.0
+                self.news_deduplicator.similarity_threshold
+                if self.news_deduplicator
+                else 0.0
             ),
             dedup_title_threshold=(
-                self.news_deduplicator.title_threshold if self.news_deduplicator else 0.0
+                self.news_deduplicator.title_threshold
+                if self.news_deduplicator
+                else 0.0
             ),
             dedup_recent_days=(
                 self.news_deduplicator.recent_days if self.news_deduplicator else 0
@@ -331,8 +355,10 @@ class Workflow:
         article = Workflow._strip_existing_reference_section(article)
 
         valid = [
-            item for item in news_items
-            if item.source and item.source.strip()
+            item
+            for item in news_items
+            if item.source
+            and item.source.strip()
             and item.source.strip() not in ("用户提供", "网络来源", "未知来源")
         ]
         if not valid:
@@ -346,8 +372,13 @@ class Workflow:
                 continue
             seen_sources.add(source)
             url = item.url.strip() if item.url else ""
-            if url and url != "manual://" and not any(
-                placeholder in url.lower() for placeholder in PLACEHOLDER_URL_MARKERS
+            if (
+                url
+                and url != "manual://"
+                and not any(
+                    placeholder in url.lower()
+                    for placeholder in PLACEHOLDER_URL_MARKERS
+                )
             ):
                 ref_lines.append(f"- [{source}]({url})")
             else:

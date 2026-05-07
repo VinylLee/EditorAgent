@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 import re
+import logging
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 try:
     import dashscope
@@ -167,7 +168,7 @@ class DashScopeSearchProvider(SearchProvider):
 
     def _parse_news_items(self, raw_text: str, news_type: str, 
                          search_sources: Dict[int, Dict[str, str]]) -> List[NewsItem]:
-        """解析新闻项，优先从 search_sources 填充 URL"""
+        """解析新闻项，✅ 强制优先从 search_sources 填充 URL"""
         items: List[NewsItem] = []
         blocks = re.split(r"---news-item---", raw_text)
 
@@ -193,23 +194,33 @@ class DashScopeSearchProvider(SearchProvider):
             source = meta.get("source", "网络来源")
             published_at = meta.get("date", "未知")
             url = meta.get("url", "")
-            ref_index = meta.get("ref_index")  # 🔑 获取模型返回的角标索引
+            ref_index = meta.get("ref_index")
+            
+            # 🔧 修复点1: 强制转换 ref_index 为 int，确保与 search_sources 的 key 类型一致
+            if ref_index is not None:
+                try:
+                    ref_index = int(ref_index)
+                except (ValueError, TypeError):
+                    ref_index = None
 
-            # 🔑 优先级1: 从 search_sources 中获取URL（最可靠）
-            if (not url or self._is_placeholder_url(url)) and ref_index and ref_index in search_sources:
+            # 🔧 修复点2: ✅ 强制优先使用 search_sources 的 URL（只要 ref_index 匹配）
+            if ref_index and ref_index in search_sources:
                 src_info = search_sources[ref_index]
-                url = src_info.get("url", "")
-                if not source or source in ("未知来源", "网络来源"):
-                    source = src_info.get("siteName", source)
+                # 无条件覆盖 URL：search_sources 来自 DashScope 官方搜索，可靠性最高
+                if src_info.get("url"):
+                    url = src_info["url"]
+                # 同时优化来源名称（仅当原 source 不可靠时）
+                if not source or source in ("未知来源", "网络来源", ""):
+                    source = src_info.get("siteName") or src_info.get("title", source)
 
-            # 优先级2: 从正文中提取URL（兜底）
+            # 兜底：从正文中提取 URL（仅当 search_sources 也未提供时）
             if not url or self._is_placeholder_url(url):
                 url = self._extract_url_from_text(body)
 
             if self._is_placeholder_url(url):
                 url = ""
             
-            # 提取域名作为来源名称
+            # 提取域名作为来源名称（最后兜底）
             if (not source or source in ("未知来源", "网络来源")) and url:
                 source = self._extract_domain(url)
 
@@ -270,7 +281,7 @@ class DashScopeSearchProvider(SearchProvider):
             )
         ]
 
-    # ==================== 以下辅助方法保持不变 ====================
+    # ==================== 辅助方法（保持不变） ====================
     
     @staticmethod
     def _infer_title(text: str) -> str:
