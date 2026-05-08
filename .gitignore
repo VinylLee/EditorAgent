@@ -51,6 +51,7 @@ secrets/
 /wechat_edu_agent/outputs/
 /outputs/
 /wechat_edu_agent/sample_news/
+/wechat_edu_agent/llm/_prompts_source.txt
 
 # =========================================
 # 打包和发布产物

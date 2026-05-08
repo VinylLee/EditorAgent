@@ -3,8 +3,10 @@
 
 加载顺序（高优先级优先）：
 1. PROMPTS_PATH 环境变量指向的 JSON 文件
-2. 本文件同目录下的 prompts.json
-3. 内置默认值（内置字符串兜底）
+2. 打包后 exe 同目录下的 prompts.json（独立部署，修改无需重打包）
+3. 本文件同目录下的 prompts.json
+4. sys._MEIPASS 下的内置 prompts.json（PyInstaller 包内兜底）
+5. 内置默认值（内置字符串兜底）
 
 支持在 prompts.json 中使用 {VARIABLE_NAME} 占位符，
 变量值从 app_constants.py 中读取。
@@ -55,10 +57,14 @@ def _load_prompts() -> dict[str, str]:
     if env_path:
         sources.append(Path(env_path))
 
-    # 2) 本文件同目录下的 prompts.json
+    # 2) 打包后 exe 同目录下的 prompts.json（独立部署用，修改无需重打包）
+    if getattr(sys, "frozen", False):
+        sources.append(Path(sys.executable).resolve().parent / "prompts.json")
+
+    # 3) 本文件同目录下的 prompts.json（开发模式）
     sources.append(Path(__file__).resolve().parent / "prompts.json")
 
-    # 3) PyInstaller 打包后，数据文件可能在 sys._MEIPASS 下
+    # 4) PyInstaller 打包后，数据文件可能在 sys._MEIPASS 下
     if hasattr(sys, "_MEIPASS"):
         sources.append(Path(sys._MEIPASS) / "wechat_edu_agent" / "llm" / "prompts.json")
         sources.append(Path(sys._MEIPASS) / "llm" / "prompts.json")
@@ -79,6 +85,12 @@ def _load_prompts() -> dict[str, str]:
                         continue
                     # 替换占位符变量
                     normalized[key] = _substitute(normalized[key])
+                # # 记录 prompts.json 加载来源（便于验证打包后是否用了 exe 旁边的文件）
+                # try:
+                #     with open(Path(sys.executable if getattr(sys, "frozen", False) else __file__).parent / "_prompts_source.txt", "w") as _f:
+                #         _f.write(str(source))
+                # except OSError:
+                #     pass
                 return normalized
         except (FileNotFoundError, json.JSONDecodeError, OSError):
             continue
