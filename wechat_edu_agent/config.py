@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import os
+import sys
 
 from app_constants import (
     DEFAULT_DEDUP_RECENT_DAYS,
@@ -52,8 +53,19 @@ def _read_bool_env(name: str, default: bool) -> bool:
 
 
 def load_config() -> AppConfig:
-    # Load .env from the same directory as this file
-    load_dotenv(Path(__file__).parent / ".env")
+    # 尝试多个位置加载 .env，按优先级排列
+    _env_candidates: list[Path] = [
+        Path(__file__).resolve().parent / ".env",
+        Path.cwd() / ".env",
+    ]
+    if getattr(sys, "frozen", False):
+        _env_candidates.insert(0, Path(sys.executable).parent / ".env")
+    if hasattr(sys, "_MEIPASS"):
+        _env_candidates.append(Path(sys._MEIPASS) / "wechat_edu_agent" / ".env")
+    for _env in _env_candidates:
+        if _env.exists():
+            load_dotenv(_env)
+            break
 
     llm_base_url = (
         os.getenv("LLM_BASE_URL")
