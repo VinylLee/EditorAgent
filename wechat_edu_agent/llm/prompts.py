@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +57,11 @@ def _load_prompts() -> dict[str, str]:
 
     # 2) 本文件同目录下的 prompts.json
     sources.append(Path(__file__).resolve().parent / "prompts.json")
+
+    # 3) PyInstaller 打包后，数据文件可能在 sys._MEIPASS 下
+    if hasattr(sys, "_MEIPASS"):
+        sources.append(Path(sys._MEIPASS) / "wechat_edu_agent" / "llm" / "prompts.json")
+        sources.append(Path(sys._MEIPASS) / "llm" / "prompts.json")
 
     for source in sources:
         try:
